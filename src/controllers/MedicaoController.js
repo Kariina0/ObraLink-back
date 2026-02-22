@@ -12,11 +12,9 @@ class MedicaoController {
   create = asyncHandler(async (req, res) => {
     const medicao = await medicaoService.create(req.body, req.user.id);
 
-    res
-      .status(201)
-      .json(
-        successResponse(new MedicaoDTO(medicao), "Medição criada com sucesso"),
-      );
+    res.status(201).json(
+      successResponse(new MedicaoDTO(medicao), "Medição criada com sucesso")
+    );
   });
 
   /**
@@ -37,10 +35,7 @@ class MedicaoController {
    */
   getByObra = asyncHandler(async (req, res) => {
     const { page, limit } = req.query;
-    const result = await medicaoService.getByObra(req.params.obraId, {
-      page,
-      limit,
-    });
+    const result = await medicaoService.getByObra(req.params.obraId, { page, limit });
 
     const { pagination } = paginate(page, limit, result.total);
 
@@ -48,8 +43,8 @@ class MedicaoController {
       successResponse(
         result.data.map((m) => new MedicaoDTO(m)),
         "Medições listadas",
-        pagination,
-      ),
+        pagination
+      )
     );
   });
 
@@ -60,10 +55,7 @@ class MedicaoController {
    */
   getMinhas = asyncHandler(async (req, res) => {
     const { page, limit } = req.query;
-    const result = await medicaoService.getByResponsavel(req.user.id, {
-      page,
-      limit,
-    });
+    const result = await medicaoService.getByResponsavel(req.user.id, { page, limit });
 
     const { pagination } = paginate(page, limit, result.total);
 
@@ -71,8 +63,8 @@ class MedicaoController {
       successResponse(
         result.data.map((m) => new MedicaoDTO(m)),
         "Medições listadas",
-        pagination,
-      ),
+        pagination
+      )
     );
   });
 
@@ -86,15 +78,10 @@ class MedicaoController {
       req.params.id,
       req.body,
       req.user.id,
-      req.user.perfil,
+      req.user.perfil
     );
 
-    res.json(
-      successResponse(
-        new MedicaoDTO(medicao),
-        "Medição atualizada com sucesso",
-      ),
-    );
+    res.json(successResponse(new MedicaoDTO(medicao), "Medição atualizada com sucesso"));
   });
 
   /**
@@ -106,12 +93,10 @@ class MedicaoController {
     const medicao = await medicaoService.aprovar(
       req.params.id,
       req.user.id,
-      req.user.perfil,
+      req.user.perfil
     );
 
-    res.json(
-      successResponse(new MedicaoDTO(medicao), "Medição aprovada com sucesso"),
-    );
+    res.json(successResponse(new MedicaoDTO(medicao), "Medição aprovada com sucesso"));
   });
 
   /**
@@ -123,7 +108,7 @@ class MedicaoController {
     const medicao = await medicaoService.rejeitar(
       req.params.id,
       req.user.id,
-      req.user.perfil,
+      req.user.perfil
     );
 
     res.json(successResponse(new MedicaoDTO(medicao), "Medição rejeitada"));
