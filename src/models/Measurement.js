@@ -1,45 +1,39 @@
 const mongoose = require("mongoose");
 
-const measurementSchema = new mongoose.Schema({
-  obra: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: "Project", 
-    required: true 
+const MeasurementSchema = new mongoose.Schema(
+  {
+    comprimento: {
+      type: Number,
+      required: true,
+    },
+
+    largura: {
+      type: Number,
+      required: true,
+    },
+
+    altura: {
+      type: Number,
+      required: true,
+    },
+
+    area: {
+      type: Number,
+      required: true,
+    },
+
+    volume: {
+      type: Number,
+      required: true,
+    },
+
+    observacoes: {
+      type: String,
+    },
   },
-  user: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: "Usuarios", 
-    required: true 
-  },
-  area: { 
-    type: Number, 
-    required: true 
-  },
-  notes: { 
-    type: String 
-  },
-  status: { 
-    type: String, 
-    enum: ["pendente", "aprovada", "rejeitada"], 
-    default: "pendente" 
-  },
-  createdAt: { 
-    type: Date, 
-    default: Date.now 
-  },
-  updatedAt: { 
-    type: Date 
-  },
-  deletedAt: { 
-    type: Date, 
-    default: null 
+  {
+    timestamps: true,
   }
-});
+);
 
-// Atualiza automaticamente o campo updatedAt
-measurementSchema.pre("save", function (next) {
-  this.updatedAt = new Date();
-  next();
-});
-
-module.exports = mongoose.model("Measurement", measurementSchema);
+module.exports = mongoose.model("Measurement", MeasurementSchema);

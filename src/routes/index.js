@@ -5,8 +5,7 @@ const router = express.Router();
 const authRoutes = require("./auth");
 const measurementRoutes = require("./measurements");
 const fileRoutes = require("./files");
-const syncRoutes = require("./sync");
-const purchaseRoutes = require("./purchaseRoutes"); // <-- adicionar
+const syncRoutes = require("./sync"); 
 
 // Rota de health check
 router.get("/health", (req, res) => {
