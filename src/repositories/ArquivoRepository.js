@@ -1,22 +1,18 @@
 const BaseRepository = require("./BaseRepository");
-const Arquivo = require("../models/Arquivo");
 const fs = require("fs").promises;
 const path = require("path");
 
 class ArquivoRepository extends BaseRepository {
   constructor() {
-    super(Arquivo);
+    super("arquivos");
   }
 
   async findBySyncId(syncId) {
-    return await this.model.findOne({ syncId }).notDeleted();
+    return await this.findOne({ syncId });
   }
 
   async findByObra(obraId, options = {}) {
-    return await this.findAll(
-      { obra: obraId },
-      { ...options, populate: ["uploadedBy"] },
-    );
+    return await this.findAll({ obra: obraId }, options);
   }
 
   async findByTipo(tipo, options = {}) {
@@ -28,18 +24,11 @@ class ArquivoRepository extends BaseRepository {
   }
 
   async findPendentes(options = {}) {
-    return await this.findAll(
-      { sincronizado: false },
-      { ...options, populate: ["obra", "uploadedBy"] },
-    );
+    return await this.findAll({ sincronizado: false }, options);
   }
 
   async markAsSynced(arquivoId) {
-    return await this.model.findByIdAndUpdate(
-      arquivoId,
-      { sincronizado: true, "metadata.updatedAt": new Date() },
-      { new: true },
-    );
+    return await this.update(arquivoId, { sincronizado: true });
   }
 
   async deleteWithFile(id) {
@@ -47,7 +36,7 @@ class ArquivoRepository extends BaseRepository {
 
     // Excluir arquivo físico
     try {
-      await fs.unlink(arquivo.caminho);
+      if (arquivo && arquivo.caminho) await fs.unlink(arquivo.caminho);
     } catch (error) {
       console.error("Erro ao excluir arquivo físico:", error);
     }
@@ -72,22 +61,13 @@ class ArquivoRepository extends BaseRepository {
   }
 
   async getStorageUsage(obraId = null) {
-    const filter = obraId
-      ? { obra: obraId, "metadata.deletedAt": null }
-      : { "metadata.deletedAt": null };
-
-    const result = await this.model.aggregate([
-      { $match: filter },
-      {
-        $group: {
-          _id: null,
-          totalSize: { $sum: "$tamanho" },
-          totalFiles: { $sum: 1 },
-        },
-      },
-    ]);
-
-    return result.length > 0 ? result[0] : { totalSize: 0, totalFiles: 0 };
+    const qb = this.knex(this.table);
+    if (obraId) qb.where({ obra: obraId });
+    qb.andWhereRaw("json_extract(metadata, '$.deletedAt') IS NULL OR metadata NOT LIKE '%\\"deletedAt\\":%'");
+    const rows = await qb.select('tamanho');
+    let totalSize = 0;
+    for (const r of rows) totalSize += Number(r.tamanho || 0);
+    return { totalSize, totalFiles: rows.length };
   }
 }
 

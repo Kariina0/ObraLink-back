@@ -1,36 +1,27 @@
 const BaseRepository = require("./BaseRepository");
-const User = require("../models/User");
 
 class UserRepository extends BaseRepository {
   constructor() {
-    super(User);
+    super("users");
   }
 
   async findByEmail(email) {
-    return await this.model
-      .findOne({ email })
-      .notDeleted()
-      .select("+senha +refreshToken");
+    await this._ensureTable();
+    const qb = this.knex(this.table).where({ email });
+    await this._applyNotDeleted(qb);
+    return await qb.first();
   }
 
   async findBySyncId(syncId) {
-    return await this.model.findOne({ syncId }).notDeleted();
+    return await this.findOne({ syncId });
   }
 
   async updateRefreshToken(userId, refreshToken) {
-    return await this.model.findByIdAndUpdate(
-      userId,
-      { refreshToken, "metadata.updatedAt": new Date() },
-      { new: true },
-    );
+    return await this.update(userId, { refreshToken });
   }
 
   async clearRefreshToken(userId) {
-    return await this.model.findByIdAndUpdate(
-      userId,
-      { refreshToken: null, "metadata.updatedAt": new Date() },
-      { new: true },
-    );
+    return await this.update(userId, { refreshToken: null });
   }
 
   async findByObraAtual(obraId, options = {}) {
@@ -38,28 +29,17 @@ class UserRepository extends BaseRepository {
   }
 
   async updateLastSync(userId) {
-    return await this.model.findByIdAndUpdate(
-      userId,
-      { lastSync: new Date(), "metadata.updatedAt": new Date() },
-      { new: true },
-    );
+    return await this.update(userId, { lastSync: new Date() });
   }
 
   async exportUserData(userId) {
-    const user = await this.findById(userId, ["obraAtual"]);
+    await this._ensureTable();
+    const user = await this.findById(userId);
 
-    // Buscar todos os dados relacionados ao usuário
-    const Medicao = require("../models/Medicao");
-    const Diario = require("../models/Diario");
-    const SolicitacaoCompra = require("../models/SolicitacaoCompra");
-    const Arquivo = require("../models/Arquivo");
-
-    const [medicoes, diarios, solicitacoes, arquivos] = await Promise.all([
-      Medicao.find({ responsavel: userId }).notDeleted(),
-      Diario.find({ responsavel: userId }).notDeleted(),
-      SolicitacaoCompra.find({ solicitante: userId }).notDeleted(),
-      Arquivo.find({ uploadedBy: userId }).notDeleted(),
-    ]);
+    const medicoes = await this.knex("medicoes").where({ responsavel: userId }).andWhereRaw("json_extract(metadata, '$.deletedAt') IS NULL OR metadata NOT LIKE '%\"deletedAt\":%'");
+    const diarios = await this.knex("diarios").where({ responsavel: userId }).andWhereRaw("json_extract(metadata, '$.deletedAt') IS NULL OR metadata NOT LIKE '%\"deletedAt\":%'");
+    const solicitacoes = await this.knex("solicitacoes_compra").where({ solicitante: userId }).andWhereRaw("json_extract(metadata, '$.deletedAt') IS NULL OR metadata NOT LIKE '%\"deletedAt\":%'");
+    const arquivos = await this.knex("arquivos").where({ uploadedBy: userId }).andWhereRaw("json_extract(metadata, '$.deletedAt') IS NULL OR metadata NOT LIKE '%\"deletedAt\":%'");
 
     return {
       usuario: user,

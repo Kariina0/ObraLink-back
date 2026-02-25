@@ -6,6 +6,7 @@ const {
   ValidationError,
 } = require("../utils/errors");
 const { generateSyncId } = require("../utils/helpers");
+const bcrypt = require("bcryptjs");
 
 class AuthService {
   async register(userData) {
@@ -20,18 +21,17 @@ class AuthService {
       userData.syncId = generateSyncId();
     }
 
-    // Criar usuário
+    // Hash da senha e criar usuário
+    if (userData.senha) {
+      userData.senha = await bcrypt.hash(String(userData.senha), 12);
+    }
     const user = await userRepository.create(userData);
 
     // Gerar tokens
-    const tokens = jwtConfig.generateTokenPair({
-      id: user._id,
-      email: user.email,
-      perfil: user.perfil,
-    });
+    const tokens = jwtConfig.generateTokenPair({ id: user.id, email: user.email, perfil: user.perfil });
 
     // Salvar refresh token
-    await userRepository.updateRefreshToken(user._id, tokens.refreshToken);
+    await userRepository.updateRefreshToken(user.id, tokens.refreshToken);
 
     return { user, tokens };
   }
@@ -39,53 +39,35 @@ class AuthService {
   async login(email, senha) {
     // Buscar usuário
     const user = await userRepository.findByEmail(email);
-    if (!user || !user.isActive) {
-      throw new UnauthorizedError("Credenciais inválidas");
-    }
+    if (!user || !user.isActive) throw new UnauthorizedError("Credenciais inválidas");
 
-    // Verificar senha
-    const isPasswordValid = await user.comparePassword(senha);
-    if (!isPasswordValid) {
-      throw new UnauthorizedError("Credenciais inválidas");
-    }
+    const isPasswordValid = await bcrypt.compare(String(senha), String(user.senha || ""));
+    if (!isPasswordValid) throw new UnauthorizedError("Credenciais inválidas");
 
-    // Gerar tokens
-    const tokens = jwtConfig.generateTokenPair({
-      id: user._id,
-      email: user.email,
-      perfil: user.perfil,
-    });
+    const tokens = jwtConfig.generateTokenPair({ id: user.id, email: user.email, perfil: user.perfil });
+    await userRepository.updateRefreshToken(user.id, tokens.refreshToken);
 
-    // Salvar refresh token
-    await userRepository.updateRefreshToken(user._id, tokens.refreshToken);
+    // remove sensitive fields
+    const safeUser = { ...user };
+    delete safeUser.senha;
+    delete safeUser.refreshToken;
 
-    // Remover senha da resposta
-    user.senha = undefined;
-    user.refreshToken = undefined;
-
-    return { user, tokens };
+    return { user: safeUser, tokens };
   }
 
   async refreshToken(refreshToken) {
     try {
       // Verificar refresh token
       const decoded = jwtConfig.verifyRefreshToken(refreshToken);
-
       // Buscar usuário
       const user = await userRepository.findById(decoded.id);
-      if (!user || !user.isActive) {
-        throw new UnauthorizedError("Usuário não encontrado ou inativo");
-      }
+      if (!user || !user.isActive) throw new UnauthorizedError("Usuário não encontrado ou inativo");
 
       // Gerar novos tokens
-      const tokens = jwtConfig.generateTokenPair({
-        id: user._id,
-        email: user.email,
-        perfil: user.perfil,
-      });
+      const tokens = jwtConfig.generateTokenPair({ id: user.id, email: user.email, perfil: user.perfil });
 
       // Atualizar refresh token
-      await userRepository.updateRefreshToken(user._id, tokens.refreshToken);
+      await userRepository.updateRefreshToken(user.id, tokens.refreshToken);
 
       return tokens;
     } catch (error) {
@@ -99,20 +81,15 @@ class AuthService {
   }
 
   async changePassword(userId, senhaAtual, novaSenha) {
-    const user = await userRepository.findByEmail(
-      (await userRepository.findById(userId)).email,
-    );
+    const existing = await userRepository.findById(userId);
+    if (!existing) throw new ValidationError("Usuário não encontrado");
 
-    // Verificar senha atual
-    const isPasswordValid = await user.comparePassword(senhaAtual);
-    if (!isPasswordValid) {
-      throw new ValidationError("Senha atual incorreta");
-    }
+    const user = await userRepository.findByEmail(existing.email);
+    const isPasswordValid = await bcrypt.compare(String(senhaAtual), String(user.senha || ""));
+    if (!isPasswordValid) throw new ValidationError("Senha atual incorreta");
 
-    // Atualizar senha
-    user.senha = novaSenha;
-    await user.save();
-
+    const hashed = await bcrypt.hash(String(novaSenha), 12);
+    await userRepository.update(userId, { senha: hashed });
     return { message: "Senha alterada com sucesso" };
   }
 }

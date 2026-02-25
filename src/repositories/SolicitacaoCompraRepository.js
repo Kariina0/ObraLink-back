@@ -1,96 +1,48 @@
 const BaseRepository = require("./BaseRepository");
-const SolicitacaoCompra = require("../models/SolicitacaoCompra");
 
 class SolicitacaoCompraRepository extends BaseRepository {
   constructor() {
-    super(SolicitacaoCompra);
+    super("solicitacoes_compra");
   }
 
   async findBySyncId(syncId) {
-    return await this.model.findOne({ syncId }).notDeleted();
+    return await this.findOne({ syncId });
   }
 
   async findByObra(obraId, options = {}) {
-    return await this.findAll(
-      { obra: obraId },
-      { ...options, populate: ["solicitante", "aprovadoPor", "anexos"] },
-    );
+    return await this.findAll({ obra: obraId }, options);
   }
 
   async findBySolicitante(userId, options = {}) {
-    return await this.findAll(
-      { solicitante: userId },
-      { ...options, populate: ["obra", "anexos"] },
-    );
+    return await this.findAll({ solicitante: userId }, options);
   }
 
   async findByStatus(status, options = {}) {
-    return await this.findAll(
-      { status },
-      { ...options, populate: ["obra", "solicitante"] },
-    );
+    return await this.findAll({ status }, options);
   }
 
   async findPendentes(options = {}) {
-    return await this.findAll(
-      { sincronizado: false },
-      { ...options, populate: ["obra", "solicitante"] },
-    );
+    return await this.findAll({ sincronizado: false }, options);
   }
 
   async findByPrioridade(prioridade, options = {}) {
-    return await this.findAll(
-      { prioridade, status: "pendente" },
-      { ...options, sort: { dataNecessidade: 1 } },
-    );
+    return await this.findAll({ prioridade, status: "pendente" }, { ...options, sort: { dataNecessidade: 1 } });
   }
 
   async aprovar(solicitacaoId, aprovadoPor) {
-    return await this.model.findByIdAndUpdate(
-      solicitacaoId,
-      {
-        status: "aprovada",
-        aprovadoPor,
-        dataAprovacao: new Date(),
-        "metadata.updatedAt": new Date(),
-      },
-      { new: true },
-    );
+    return await this.update(solicitacaoId, { status: "aprovada", aprovadoPor, dataAprovacao: new Date() });
   }
 
   async rejeitar(solicitacaoId, motivoRejeicao, aprovadoPor) {
-    return await this.model.findByIdAndUpdate(
-      solicitacaoId,
-      {
-        status: "rejeitada",
-        aprovadoPor,
-        motivoRejeicao,
-        dataAprovacao: new Date(),
-        "metadata.updatedAt": new Date(),
-      },
-      { new: true },
-    );
+    return await this.update(solicitacaoId, { status: "rejeitada", aprovadoPor, motivoRejeicao, dataAprovacao: new Date() });
   }
 
   async concluir(solicitacaoId, dados) {
-    return await this.model.findByIdAndUpdate(
-      solicitacaoId,
-      {
-        status: "concluida",
-        dataConclusao: new Date(),
-        ...dados,
-        "metadata.updatedAt": new Date(),
-      },
-      { new: true },
-    );
+    return await this.update(solicitacaoId, { status: "concluida", dataConclusao: new Date(), ...dados });
   }
 
   async markAsSynced(solicitacaoId) {
-    return await this.model.findByIdAndUpdate(
-      solicitacaoId,
-      { sincronizado: true, "metadata.updatedAt": new Date() },
-      { new: true },
-    );
+    return await this.update(solicitacaoId, { sincronizado: true });
   }
 }
 

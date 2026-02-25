@@ -1,20 +1,19 @@
 const BaseRepository = require("./BaseRepository");
-const Obra = require("../models/Obra");
 
 class ObraRepository extends BaseRepository {
   constructor() {
-    super(Obra);
+    super("obras");
   }
 
   async findByCodigo(codigo) {
-    return await this.model
-      .findOne({ codigo })
-      .notDeleted()
-      .populate("responsavel equipe.usuario");
+    await this._ensureTable();
+    const qb = this.knex(this.table).where({ codigo });
+    await this._applyNotDeleted(qb);
+    return await qb.first();
   }
 
   async findBySyncId(syncId) {
-    return await this.model.findOne({ syncId }).notDeleted();
+    return await this.findOne({ syncId });
   }
 
   async findByResponsavel(userId, options = {}) {
@@ -22,38 +21,49 @@ class ObraRepository extends BaseRepository {
   }
 
   async findByEquipeMembro(userId, options = {}) {
-    return await this.findAll({ "equipe.usuario": userId }, options);
+    // equipe stored as JSON: filter client-side
+    const all = await this.findAll({}, { ...options, limit: 10000 });
+    const data = all.data.filter((o) => {
+      try {
+        const equipe = o.equipe ? JSON.parse(o.equipe) : [];
+        return equipe.some((m) => String(m.usuario) === String(userId));
+      } catch (err) {
+        return false;
+      }
+    });
+    return { data, total: data.length, page: 1, limit: data.length };
   }
 
   async addMembroEquipe(obraId, userId, funcao) {
     const obra = await this.findById(obraId);
-
-    // Verificar se já está na equipe
-    const jaExiste = obra.equipe.some(
-      (membro) => membro.usuario.toString() === userId.toString(),
-    );
-
-    if (!jaExiste) {
-      obra.equipe.push({
-        usuario: userId,
-        funcao,
-        dataInclusao: new Date(),
-      });
-      await obra.save();
+    let equipe = [];
+    try {
+      equipe = obra.equipe ? JSON.parse(obra.equipe) : [];
+    } catch (err) {
+      equipe = [];
     }
 
-    return obra;
+    const jaExiste = equipe.some((m) => String(m.usuario) === String(userId));
+    if (!jaExiste) {
+      equipe.push({ usuario: userId, funcao, dataInclusao: new Date() });
+      await this.update(obraId, { equipe: JSON.stringify(equipe) });
+    }
+
+    return await this.findById(obraId);
   }
 
   async removeMembroEquipe(obraId, userId) {
     const obra = await this.findById(obraId);
+    let equipe = [];
+    try {
+      equipe = obra.equipe ? JSON.parse(obra.equipe) : [];
+    } catch (err) {
+      equipe = [];
+    }
 
-    obra.equipe = obra.equipe.filter(
-      (membro) => membro.usuario.toString() !== userId.toString(),
-    );
-
-    await obra.save();
-    return obra;
+    equipe = equipe.filter((m) => String(m.usuario) !== String(userId));
+    await this.update(obraId, { equipe: JSON.stringify(equipe) });
+    return await this.findById(obraId);
   }
 
   async updateStatus(obraId, status) {
@@ -62,9 +72,15 @@ class ObraRepository extends BaseRepository {
 
   async updateOrcamento(obraId, valorGasto) {
     const obra = await this.findById(obraId);
-    obra.orcamento.valorGasto = (obra.orcamento.valorGasto || 0) + valorGasto;
-    await obra.save();
-    return obra;
+    let orcamento = {};
+    try {
+      orcamento = obra.orcamento ? JSON.parse(obra.orcamento) : {};
+    } catch (err) {
+      orcamento = {};
+    }
+    orcamento.valorGasto = (orcamento.valorGasto || 0) + valorGasto;
+    await this.update(obraId, { orcamento: JSON.stringify(orcamento) });
+    return await this.findById(obraId);
   }
 
   async getObrasPorStatus(status, options = {}) {

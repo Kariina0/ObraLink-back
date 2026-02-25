@@ -1,23 +1,16 @@
 const BaseRepository = require("./BaseRepository");
-const Diario = require("../models/Diario");
 
 class DiarioRepository extends BaseRepository {
   constructor() {
-    super(Diario);
+    super("diarios");
   }
 
   async findBySyncId(syncId) {
-    return await this.model.findOne({ syncId }).notDeleted();
+    return await this.findOne({ syncId });
   }
 
   async findByObra(obraId, options = {}) {
-    return await this.findAll(
-      { obra: obraId },
-      {
-        ...options,
-        populate: ["responsavel", "fotos", "atividades.responsaveis"],
-      },
-    );
+    return await this.findAll({ obra: obraId }, options);
   }
 
   async findByData(obraId, data) {
@@ -27,58 +20,57 @@ class DiarioRepository extends BaseRepository {
     const fimDia = new Date(data);
     fimDia.setHours(23, 59, 59, 999);
 
-    return await this.model
-      .findOne({
-        obra: obraId,
-        data: {
-          $gte: iniciodia,
-          $lte: fimDia,
-        },
-      })
-      .notDeleted()
-      .populate(["responsavel", "fotos"]);
+    const all = await this.findAll({ obra: obraId }, { limit: 10000 });
+    const found = all.data.find((d) => {
+      const dt = d.data ? new Date(d.data) : null;
+      if (!dt) return false;
+      return dt >= iniciodia && dt <= fimDia;
+    });
+    return found || null;
   }
 
   async findByPeriodo(obraId, dataInicio, dataFim, options = {}) {
-    return await this.findAll(
-      {
-        obra: obraId,
-        data: {
-          $gte: dataInicio,
-          $lte: dataFim,
-        },
-      },
-      options,
-    );
+    const all = await this.findAll({ obra: obraId }, { ...options, limit: 10000 });
+    const data = all.data.filter((d) => {
+      const dt = d.data ? new Date(d.data) : null;
+      if (!dt) return false;
+      return dt >= new Date(dataInicio) && dt <= new Date(dataFim);
+    });
+    return { data, total: data.length, page: 1, limit: data.length };
   }
 
   async findPendentes(options = {}) {
-    return await this.findAll(
-      { sincronizado: false },
-      { ...options, populate: ["obra", "responsavel"] },
-    );
+    return await this.findAll({ sincronizado: false }, options);
   }
 
   async markAsSynced(diarioId) {
-    return await this.model.findByIdAndUpdate(
-      diarioId,
-      { sincronizado: true, "metadata.updatedAt": new Date() },
-      { new: true },
-    );
+    return await this.update(diarioId, { sincronizado: true });
   }
 
   async addOcorrencia(diarioId, ocorrencia) {
     const diario = await this.findById(diarioId);
-    diario.ocorrencias.push(ocorrencia);
-    await diario.save();
-    return diario;
+    let ocorrencias = [];
+    try {
+      ocorrencias = diario.ocorrencias ? JSON.parse(diario.ocorrencias) : [];
+    } catch (err) {
+      ocorrencias = [];
+    }
+    ocorrencias.push(ocorrencia);
+    await this.update(diarioId, { ocorrencias: JSON.stringify(ocorrencias) });
+    return await this.findById(diarioId);
   }
 
   async addVisitante(diarioId, visitante) {
     const diario = await this.findById(diarioId);
-    diario.visitantes.push(visitante);
-    await diario.save();
-    return diario;
+    let visitantes = [];
+    try {
+      visitantes = diario.visitantes ? JSON.parse(diario.visitantes) : [];
+    } catch (err) {
+      visitantes = [];
+    }
+    visitantes.push(visitante);
+    await this.update(diarioId, { visitantes: JSON.stringify(visitantes) });
+    return await this.findById(diarioId);
   }
 }
 

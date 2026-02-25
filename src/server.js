@@ -1,12 +1,9 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const mongoose = require("mongoose");
+const database = require("./config/database");
 
 const PORT = process.env.PORT || 5000;
-const MONGODB_URI = process.env.MONGODB_URI;
-
-console.log("MONGODB_URI:", MONGODB_URI);
 
 const app = express();
 
@@ -22,15 +19,14 @@ app.use("/api/medicoes", medicoesRoutes);
 app.use("/api/solicitacoes", solicitacoesRoutes);
 app.use("/api/auth", authRoutes);
 
-// Conexão com MongoDB
-mongoose.connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-})
-.then(() => console.log("MongoDB conectado com sucesso!"))
-.catch((err) => console.error("Erro ao conectar ao MongoDB:", err));
+async function start() {
+    await database.connect();
+    app.listen(PORT, () => {
+        console.log(`Servidor rodando na porta ${PORT}`);
+    });
+}
 
-// Inicialização do servidor
-app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+start().catch((err) => {
+    console.error("Erro ao iniciar a aplicação:", err);
+    process.exit(1);
 });
