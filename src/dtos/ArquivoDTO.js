@@ -1,6 +1,6 @@
 class ArquivoDTO {
   constructor(arquivo) {
-    this.id = arquivo._id;
+    this.id = arquivo.id || arquivo._id;
     this.nome = arquivo.nome;
     this.nomeOriginal = arquivo.nomeOriginal;
     this.url = arquivo.url;

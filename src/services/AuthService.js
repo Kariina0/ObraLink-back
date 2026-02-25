@@ -30,8 +30,9 @@ class AuthService {
     // Gerar tokens
     const tokens = jwtConfig.generateTokenPair({ id: user.id, email: user.email, perfil: user.perfil });
 
-    // Salvar refresh token
-    await userRepository.updateRefreshToken(user.id, tokens.refreshToken);
+    // Hash do refresh token antes de salvar
+    const hashedRefresh = await bcrypt.hash(tokens.refreshToken, 12);
+    await userRepository.updateRefreshToken(user.id, hashedRefresh);
 
     return { user, tokens };
   }
@@ -45,7 +46,8 @@ class AuthService {
     if (!isPasswordValid) throw new UnauthorizedError("Credenciais inválidas");
 
     const tokens = jwtConfig.generateTokenPair({ id: user.id, email: user.email, perfil: user.perfil });
-    await userRepository.updateRefreshToken(user.id, tokens.refreshToken);
+    const hashedRefresh = await bcrypt.hash(tokens.refreshToken, 12);
+    await userRepository.updateRefreshToken(user.id, hashedRefresh);
 
     // remove sensitive fields
     const safeUser = { ...user };
@@ -63,11 +65,19 @@ class AuthService {
       const user = await userRepository.findById(decoded.id);
       if (!user || !user.isActive) throw new UnauthorizedError("Usuário não encontrado ou inativo");
 
+      // Verificar se o refresh token corresponde ao armazenado (hash)
+      const storedHash = user.refreshToken;
+      if (!storedHash) throw new UnauthorizedError("Refresh token não encontrado");
+
+      const isValid = await bcrypt.compare(String(refreshToken), String(storedHash));
+      if (!isValid) throw new UnauthorizedError("Refresh token inválido");
+
       // Gerar novos tokens
       const tokens = jwtConfig.generateTokenPair({ id: user.id, email: user.email, perfil: user.perfil });
 
-      // Atualizar refresh token
-      await userRepository.updateRefreshToken(user.id, tokens.refreshToken);
+      // Salvar novo refresh token (hash)
+      const newHash = await bcrypt.hash(tokens.refreshToken, 12);
+      await userRepository.updateRefreshToken(user.id, newHash);
 
       return tokens;
     } catch (error) {

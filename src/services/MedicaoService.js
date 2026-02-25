@@ -29,7 +29,8 @@ class MedicaoService {
 
     // Criar medição
     const medicao = await medicaoRepository.create(medicaoData);
-    return await medicaoRepository.findById(medicao._id, [
+    const medicaoId = medicao.id || medicao._id || medicao;
+    return await medicaoRepository.findById(medicaoId, [
       "obra",
       "responsavel",
       "anexos",
@@ -56,7 +57,8 @@ class MedicaoService {
 
     // Atualizar
     const updated = await medicaoRepository.update(medicaoId, medicaoData);
-    return await medicaoRepository.findById(updated._id, [
+    const updatedId = updated.id || updated._id || medicaoId;
+    return await medicaoRepository.findById(updatedId, [
       "obra",
       "responsavel",
       "anexos",
@@ -131,7 +133,8 @@ class MedicaoService {
       if (existing) {
         // Resolver conflito (Last-Write-Wins)
         if (medicaoData.clientTimestamp > existing.clientTimestamp) {
-          return await medicaoRepository.update(existing._id, medicaoData);
+          const existingId = existing.id || existing._id;
+          return await medicaoRepository.update(existingId, medicaoData);
         }
         return existing;
       }

@@ -47,7 +47,8 @@ router.post("/", async (req, res) => {
 		}
 		return res.status(201).json(created);
 	} catch (err) {
-		console.error("Erro ao criar medição:", err);
+		const logger = require("../utils/logger");
+		logger.error("Erro ao criar medição:", err);
 		return res.status(500).json({ error: "Erro ao salvar medição" });
 	}
 });
@@ -80,7 +81,8 @@ router.get("/", async (req, res) => {
 
 		return res.json({ ...result, data: parsed });
 	} catch (err) {
-		console.error("Erro ao buscar medições:", err);
+		const logger = require("../utils/logger");
+		logger.error("Erro ao buscar medições:", err);
 		return res.status(500).json({ error: "Erro ao buscar medições" });
 	}
 });
@@ -104,7 +106,8 @@ router.get("/:id", async (req, res) => {
 		} catch (err) {}
 		return res.json(copy);
 	} catch (err) {
-		console.error("Erro ao buscar medição por id:", err);
+		const logger = require("../utils/logger");
+		logger.error("Erro ao buscar medição por id:", err);
 		if (err && err.name === "NotFoundError") return res.status(404).json({ error: "Medição não encontrada" });
 		return res.status(500).json({ error: "Erro ao buscar medição" });
 	}

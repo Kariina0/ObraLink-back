@@ -1,6 +1,6 @@
 class DiarioDTO {
   constructor(diario) {
-    this.id = diario._id;
+    this.id = diario.id || diario._id;
     this.obra = diario.obra;
     this.responsavel = diario.responsavel;
     this.data = diario.data;

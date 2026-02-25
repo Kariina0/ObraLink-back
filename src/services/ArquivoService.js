@@ -69,7 +69,8 @@ class ArquivoService {
         return await arquivoRepository.create(arquivoData);
       } catch (error) {
         // Se falhar, usar arquivo original
-        console.error("Erro ao comprimir imagem:", error);
+        const logger = require("../utils/logger");
+        logger.error("Erro ao comprimir imagem:", error);
       }
     }
 
@@ -134,7 +135,7 @@ class ArquivoService {
     // Verificar permissão
     const PERFIS = require("../constants").PERFIS;
     if (
-      arquivo.uploadedBy.toString() !== userId &&
+      Number(arquivo.uploadedBy) !== Number(userId) &&
       userPerfil !== PERFIS.ADMIN
     ) {
       const { ForbiddenError } = require("../utils/errors");

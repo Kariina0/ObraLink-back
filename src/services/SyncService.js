@@ -49,7 +49,7 @@ class SyncService {
           const result = await this.syncMedicao(medicao, userId);
           results.success.push({
             type: "medicao",
-            id: result._id,
+            id: result.id || result._id || null,
             syncId: medicao.syncId,
           });
         } catch (error) {
@@ -77,7 +77,7 @@ class SyncService {
           const result = await this.syncDiario(diario, userId);
           results.success.push({
             type: "diario",
-            id: result._id,
+            id: result.id || result._id || null,
             syncId: diario.syncId,
           });
         } catch (error) {
@@ -105,7 +105,7 @@ class SyncService {
           const result = await this.syncSolicitacao(solicitacao, userId);
           results.success.push({
             type: "solicitacao",
-            id: result._id,
+            id: result.id || result._id || null,
             syncId: solicitacao.syncId,
           });
         } catch (error) {
@@ -154,7 +154,8 @@ class SyncService {
         logger.info(
           `Resolvendo conflito de medição ${medicaoData.syncId} - Cliente vence`,
         );
-        const updated = await medicaoRepository.update(existing._id, {
+        const existingId = existing.id || existing._id;
+        const updated = await medicaoRepository.update(existingId, {
           ...medicaoData,
           sincronizado: true,
         });
@@ -197,7 +198,8 @@ class SyncService {
         logger.info(
           `Resolvendo conflito de diário ${diarioData.syncId} - Cliente vence`,
         );
-        return await diarioRepository.update(existing._id, {
+        const existingId = existing.id || existing._id;
+        return await diarioRepository.update(existingId, {
           ...diarioData,
           sincronizado: true,
         });
@@ -237,7 +239,8 @@ class SyncService {
         logger.info(
           `Resolvendo conflito de solicitação ${solicitacaoData.syncId} - Cliente vence`,
         );
-        return await solicitacaoCompraRepository.update(existing._id, {
+        const existingId = existing.id || existing._id;
+        return await solicitacaoCompraRepository.update(existingId, {
           ...solicitacaoData,
           sincronizado: true,
         });

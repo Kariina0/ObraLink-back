@@ -38,7 +38,8 @@ class ArquivoRepository extends BaseRepository {
     try {
       if (arquivo && arquivo.caminho) await fs.unlink(arquivo.caminho);
     } catch (error) {
-      console.error("Erro ao excluir arquivo físico:", error);
+      const logger = require("../utils/logger");
+      logger.error("Erro ao excluir arquivo físico:", error);
     }
 
     // Excluir do banco (soft delete)
@@ -63,7 +64,7 @@ class ArquivoRepository extends BaseRepository {
   async getStorageUsage(obraId = null) {
     const qb = this.knex(this.table);
     if (obraId) qb.where({ obra: obraId });
-    qb.andWhereRaw("json_extract(metadata, '$.deletedAt') IS NULL OR metadata NOT LIKE '%\\"deletedAt\\":%'");
+    qb.andWhereRaw(`json_extract(metadata, '$.deletedAt') IS NULL OR metadata NOT LIKE '%"deletedAt":%'`);
     const rows = await qb.select('tamanho');
     let totalSize = 0;
     for (const r of rows) totalSize += Number(r.tamanho || 0);

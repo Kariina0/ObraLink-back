@@ -2,6 +2,8 @@ const multer = require("multer");
 const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 const fs = require("fs");
+const logger = require("../utils/logger");
+const { TIPOS_ARQUIVO } = require("../constants");
 
 // Criar diretório de uploads se não existir
 const uploadDir = process.env.UPLOAD_PATH || "./uploads";
@@ -12,7 +14,10 @@ if (!fs.existsSync(uploadDir)) {
 // Configuração de armazenamento
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const subfolder = req.body.tipo || "outros";
+    // sanitize and whitelist subfolder type
+    const requested = String(req.body.tipo || "").trim();
+    const allowed = Object.values(TIPOS_ARQUIVO || {});
+    const subfolder = allowed.includes(requested) ? requested : "outros";
     const dest = path.join(uploadDir, subfolder);
 
     if (!fs.existsSync(dest)) {
@@ -61,7 +66,7 @@ const cleanupOnError = (req, res, next) => {
 
       files.forEach((file) => {
         fs.unlink(file.path, (err) => {
-          if (err) console.error("Erro ao remover arquivo:", err);
+          if (err) logger.error("Erro ao remover arquivo:", err);
         });
       });
     }

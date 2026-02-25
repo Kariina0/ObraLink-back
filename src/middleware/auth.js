@@ -28,10 +28,10 @@ const authenticate = async (req, res, next) => {
 
     // Adicionar usuário ao request
     req.user = {
-      id: user._id,
+      id: user.id || user._id,
       email: user.email,
       perfil: user.perfil,
-      obraAtual: user.obraAtual,
+      obraAtual: user.obraAtual || user.obra || null,
     };
 
     next();
@@ -74,10 +74,10 @@ const optionalAuth = async (req, res, next) => {
 
       if (user && user.isActive) {
         req.user = {
-          id: user._id,
+          id: user.id || user._id,
           email: user.email,
           perfil: user.perfil,
-          obraAtual: user.obraAtual,
+          obraAtual: user.obraAtual || user.obra || null,
         };
       }
     }

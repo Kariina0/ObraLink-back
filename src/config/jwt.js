@@ -9,7 +9,12 @@ class JWTConfig {
     this.refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || "7d";
 
     if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET) {
-      console.warn("⚠️ JWT secrets not set in .env — using development defaults. Set JWT_SECRET and JWT_REFRESH_SECRET for production.");
+      const msg = "⚠️ JWT secrets not set in .env — using development defaults. Set JWT_SECRET and JWT_REFRESH_SECRET for production.";
+      if (process.env.NODE_ENV === "production") {
+        throw new Error(msg);
+      } else {
+        console.warn(msg);
+      }
     }
   }
 
@@ -26,19 +31,13 @@ class JWTConfig {
   }
 
   verifyAccessToken(token) {
-    try {
-      return jwt.verify(token, this.secret);
-    } catch (error) {
-      throw new Error("Token inválido ou expirado");
-    }
+    // Preserve original jsonwebtoken errors (name/message) so errorHandler can handle them
+    return jwt.verify(token, this.secret);
   }
 
   verifyRefreshToken(token) {
-    try {
-      return jwt.verify(token, this.refreshSecret);
-    } catch (error) {
-      throw new Error("Refresh token inválido ou expirado");
-    }
+    // Preserve original jsonwebtoken errors (name/message) so errorHandler can handle them
+    return jwt.verify(token, this.refreshSecret);
   }
 
   generateTokenPair(payload) {

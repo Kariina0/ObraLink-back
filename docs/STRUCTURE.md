@@ -20,8 +20,8 @@ backend/
     ├── 📄 app.js                  # Configuração do Express
     ├── 📄 server.js               # Ponto de entrada da aplicação
     │
-    ├── 📁 config/                 # Configurações
-    │   ├── database.js            # Conexão MongoDB
+     ├── 📁 config/                 # Configurações
+     │   ├── database.js            # Abstração de DB: suporta SQLite (Knex) e MongoDB (Mongoose)
     │   ├── jwt.js                 # Configuração JWT
     │   └── multer.js              # Upload de arquivos
     │
@@ -45,7 +45,7 @@ backend/
     │   ├── errorHandler.js        # Tratamento global de erros
     │   └── validation.js          # Validação de dados
     │
-    ├── 📁 models/                 # Schemas Mongoose
+     ├── 📁 models/                 # Schemas Mongoose (usados quando `DB_CLIENT=mongodb`) — repositórios usam Knex/SQLite por padrão
     │   ├── Arquivo.js             # Schema de arquivos
     │   ├── Diario.js              # Schema de diários de obra
     │   ├── Medicao.js             # Schema de medições
@@ -80,7 +80,7 @@ backend/
     │   ├── helpers.js             # Funções auxiliares
     │   └── logger.js              # Configuração de logs
     │
-    └── 📁 validators/             # Schemas de validação Joi
+     └── 📁 validators/             # Schemas de validação Joi
         ├── authValidator.js       # Validações de autenticação
         └── medicaoValidator.js    # Validações de medições
 
@@ -169,7 +169,7 @@ Service (Business Logic)
      ↓
 Repository (Data Access)
      ↓
-Mongoose Model
+    Repository (Knex) or Mongoose Model (dependendo de `DB_CLIENT`)
      ↓
 MongoDB
      ↓

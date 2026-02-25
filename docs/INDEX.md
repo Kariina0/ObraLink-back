@@ -157,7 +157,7 @@ docs/
 
 ## 🔄 Atualização
 
-Esta documentação é atualizada regularmente. Última atualização: **01/02/2026**
+Esta documentação foi atualizada para refletir o estado atual do projeto (suporte a SQLite/Knex, comandos de migração e correções de instruções). Última atualização: **25/02/2026**
 
 ---
 

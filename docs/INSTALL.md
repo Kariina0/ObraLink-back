@@ -1,3 +1,14 @@
+## 📋 Pré-requisitos
+
+Antes de começar, certifique-se de ter instalado:
+
+- **Node.js v18+** ([Download](https://nodejs.org/))
+- **npm** (incluído com Node.js) ou **yarn**
+- **Git** (opcional, para clonar o repositório)
+- **4GB RAM** mínimo
+- **500MB** de espaço em disco
+
+Observação: o projeto suporta dois modos de persistência: SQLite (recomendado para desenvolvimento) e MongoDB (opcional).
 # 🚀 Guia Rápido de Instalação
 
 ## 📋 Pré-requisitos
@@ -26,21 +37,52 @@ O arquivo `.env` já está configurado para desenvolvimento. Se precisar ajustar
 ```bash
 # Edite o arquivo .env com suas configurações
 ```
+### 3. Banco de dados e migrações
 
-### 3. Iniciar MongoDB
-
-**Windows:**
+Por padrão local o projeto usa SQLite via Knex. Para preparar o banco e popular dados de exemplo:
 
 ```bash
-# Abra o Prompt de Comando como Administrador
-net start MongoDB
+# Defina o cliente e rode migrações (Linux/Mac)
+export DB_CLIENT=sqlite
+npm run migrate
+npm run seed:sqlite
+
+# Windows PowerShell
+$env:DB_CLIENT="sqlite"
+npm run migrate
+npm run seed:sqlite
 ```
 
-**Linux/Mac:**
+Se preferir usar MongoDB, configure a variável `DB_CLIENT=mongodb` e `MONGODB_URI` no `.env`.
 
 ```bash
-sudo systemctl start mongodb
-# ou
+# Exemplo (Linux/Mac)
+export DB_CLIENT=mongodb
+export MONGODB_URI='mongodb://localhost:27017/construcao_db'
+
+# Windows PowerShell
+$env:DB_CLIENT="mongodb"
+$env:MONGODB_URI="mongodb://localhost:27017/construcao_db"
+```
+### 3. Iniciar MongoDB
+**Windows:**
+
+
+### 4. Popular banco de dados (opcional)
+
+Para SQLite:
+
+```bash
+npm run seed:sqlite
+```
+
+Para MongoDB (se estiver usando):
+
+```bash
+npm run seed
+```
+
+Os scripts de seed criam dados de exemplo (usuarios, obras, etc.). As credenciais padrão de teste podem variar conforme o seed atual.
 sudo service mongodb start
 ```
 

@@ -10,7 +10,11 @@ npm run dev
 npm start
 
 # Popular banco de dados com dados de exemplo
+# Para MongoDB (legacy)
 npm run seed
+
+# Para SQLite (Knex)
+npm run seed:sqlite
 
 # Executar testes (quando implementados)
 npm test
@@ -79,6 +83,23 @@ db.users.deleteMany({})
 # Dropar banco de dados (CUIDADO!)
 db.dropDatabase()
 ```
+
+## 🗂️ SQLite / Knex
+
+O projeto inclui suporte a SQLite via Knex.js. Use as migrações e seeds abaixo para preparar o banco local:
+
+```bash
+# Rodar migrações
+npm run migrate
+
+# Reverter migrações
+npm run migrate:rollback
+
+# Popular com seed sqlite
+npm run seed:sqlite
+```
+
+Defina o cliente via variável de ambiente `DB_CLIENT=sqlite` (Windows PowerShell: `$env:DB_CLIENT="sqlite"`).
 
 ## 🧹 Limpeza
 

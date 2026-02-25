@@ -1,6 +1,6 @@
 class MedicaoDTO {
   constructor(medicao) {
-    this.id = medicao._id;
+    this.id = medicao.id || medicao._id;
     this.obra = medicao.obra;
     this.responsavel = medicao.responsavel;
     this.data = medicao.data;
