@@ -67,7 +67,11 @@ class ArquivoController {
    * @access Private
    */
   getById = asyncHandler(async (req, res) => {
-    const arquivo = await arquivoService.getById(req.params.id);
+    const arquivo = await arquivoService.getById(
+      req.params.id,
+      req.user.id,
+      req.user.perfil,
+    );
 
     res.json(successResponse(new ArquivoDTO(arquivo), "Arquivo encontrado"));
   });
@@ -79,10 +83,15 @@ class ArquivoController {
    */
   getByObra = asyncHandler(async (req, res) => {
     const { page, limit } = req.query;
-    const result = await arquivoService.getByObra(req.params.obraId, {
-      page,
-      limit,
-    });
+    const result = await arquivoService.getByObra(
+      req.params.obraId,
+      {
+        page,
+        limit,
+      },
+      req.user.id,
+      req.user.perfil,
+    );
 
     const { pagination } = paginate(page, limit, result.total);
 
@@ -102,10 +111,15 @@ class ArquivoController {
    */
   getByTipo = asyncHandler(async (req, res) => {
     const { page, limit } = req.query;
-    const result = await arquivoService.getByTipo(req.params.tipo, {
-      page,
-      limit,
-    });
+    const result = await arquivoService.getByTipo(
+      req.params.tipo,
+      {
+        page,
+        limit,
+      },
+      req.user.id,
+      req.user.perfil,
+    );
 
     const { pagination } = paginate(page, limit, result.total);
 

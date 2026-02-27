@@ -1,10 +1,12 @@
 const express = require("express");
 const router = express.Router();
 const medicaoRepo = require("../repositories/MedicaoRepository");
-const BaseRepository = require("../repositories/BaseRepository");
+const { authenticate } = require("../middleware/auth");
+const { PERFIS } = require("../constants");
+const { ForbiddenError } = require("../utils/errors");
 
-// repository for legacy measurement records
-const measurementRepo = new BaseRepository("measurements");
+// Todas as rotas requerem autenticação
+router.use(authenticate);
 
 router.post("/", async (req, res) => {
 	try {
@@ -12,13 +14,20 @@ router.post("/", async (req, res) => {
 		res.set("Cache-Control", "no-store");
 
 		const payload = req.body || {};
-		// if payload looks like a raw measurement (comprimento/largura/altura/area/volume), save to measurements table
+		let anexos = null;
+		if (Array.isArray(payload.anexos)) {
+			anexos = payload.anexos;
+		} else if (payload.foto) {
+			anexos = [{ url: payload.foto }];
+		}
+		// payload de medição geométrica legado: normaliza para o formato canônico
 		const isRawMeasurement = ["comprimento", "largura", "altura", "area", "volume"].some((k) => payload[k] !== undefined);
+		const basePayload = {
+			...payload,
+			responsavel: req.user.id,
+		};
 		let created;
 		if (isRawMeasurement) {
-			const measurement = await measurementRepo.create(payload);
-			// also create a medicao record so it appears in reports
-			// adapt measurement fields into the medicao.items shape expected by the frontend
 			const unidade = payload.area ? "m²" : "m";
 			const item = {
 				descricao: "Medição",
@@ -31,19 +40,19 @@ router.post("/", async (req, res) => {
 			};
 
 			const medicaoPayload = {
-				obra: payload.obra || null,
-				responsavel: payload.responsavel || null,
+				obra: payload.obra || req.user.obraAtual || null,
+				responsavel: req.user.id,
 				data: payload.data || null,
 				observacoes: payload.observacoes || null,
 				itens: JSON.stringify([item]),
-				anexos: null,
+				anexos: anexos ? JSON.stringify(anexos) : null,
 				status: payload.status || null,
 				clientTimestamp: payload.clientTimestamp || null,
-				metadata: JSON.stringify({ measurementRef: measurement.id, createdAt: new Date() })
+				metadata: JSON.stringify({ createdAt: new Date() })
 			};
 			created = await medicaoRepo.create(medicaoPayload);
 		} else {
-			created = await medicaoRepo.create(payload);
+			created = await medicaoRepo.create(basePayload);
 		}
 		return res.status(201).json(created);
 	} catch (err) {
@@ -60,7 +69,11 @@ router.get("/", async (req, res) => {
 
 		const page = parseInt(req.query.page || "1", 10);
 		const limit = parseInt(req.query.limit || "50", 10);
-		const result = await medicaoRepo.findAll({}, { page, limit, sort: { "metadata.createdAt": -1 } });
+		const filter =
+			req.user.perfil === PERFIS.ENCARREGADO
+				? { responsavel: req.user.id }
+				: {};
+		const result = await medicaoRepo.findAll(filter, { page, limit, sort: { "metadata.createdAt": -1 } });
 
 		// parse JSON fields so client receives structured data
 		const parsed = result.data.map((r) => {
@@ -94,6 +107,12 @@ router.get("/:id", async (req, res) => {
 		const id = parseInt(req.params.id, 10);
 		if (!id) return res.status(400).json({ error: "ID inválido" });
 		const row = await medicaoRepo.findById(id);
+		if (
+			req.user.perfil === PERFIS.ENCARREGADO &&
+			Number(row.responsavel) !== Number(req.user.id)
+		) {
+			throw new ForbiddenError("Você não tem permissão para acessar esta medição");
+		}
 		const copy = { ...row };
 		try {
 			if (copy.itens && typeof copy.itens === "string") copy.itens = JSON.parse(copy.itens);
@@ -108,6 +127,7 @@ router.get("/:id", async (req, res) => {
 	} catch (err) {
 		const logger = require("../utils/logger");
 		logger.error("Erro ao buscar medição por id:", err);
+		if (err instanceof ForbiddenError) return res.status(403).json({ error: err.message });
 		if (err && err.name === "NotFoundError") return res.status(404).json({ error: "Medição não encontrada" });
 		return res.status(500).json({ error: "Erro ao buscar medição" });
 	}

@@ -15,11 +15,9 @@ const registerSchema = Joi.object({
     "string.min": "Senha deve ter pelo menos 6 caracteres",
   }),
   perfil: Joi.string()
-    .valid(...Object.values(PERFIS))
+    .valid(PERFIS.ENCARREGADO)
     .default(PERFIS.ENCARREGADO),
-  obraAtual: Joi.string()
-    .regex(/^[0-9a-fA-F]{24}$/)
-    .allow(null),
+  obraAtual: Joi.number().integer().positive().allow(null),
 });
 
 const loginSchema = Joi.object({

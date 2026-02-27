@@ -42,7 +42,7 @@ class MedicaoService {
 
     // Verificar permissão
     if (
-      medicao.responsavel.toString() !== userId &&
+      Number(medicao.responsavel) !== Number(userId) &&
       userPerfil === PERFIS.ENCARREGADO
     ) {
       throw new ForbiddenError(
@@ -65,21 +65,55 @@ class MedicaoService {
     ]);
   }
 
-  async getById(medicaoId) {
-    return await medicaoRepository.findById(medicaoId, [
+  async getById(medicaoId, userId, userPerfil) {
+    const medicao = await medicaoRepository.findById(medicaoId, [
       "obra",
       "responsavel",
       "anexos",
       "aprovadoPor",
     ]);
+
+    if (
+      userPerfil === PERFIS.ENCARREGADO &&
+      Number(medicao.responsavel) !== Number(userId)
+    ) {
+      throw new ForbiddenError(
+        "Você não tem permissão para acessar esta medição"
+      );
+    }
+
+    return medicao;
   }
 
-  async getByObra(obraId, options) {
+  async getByObra(obraId, options, userId, userPerfil, obraAtual) {
+    if (userPerfil === PERFIS.ENCARREGADO) {
+      if (obraAtual && Number(obraAtual) !== Number(obraId)) {
+        throw new ForbiddenError(
+          "Você não tem permissão para acessar medições desta obra"
+        );
+      }
+
+      return await medicaoRepository.findAll(
+        { obra: Number(obraId), responsavel: userId },
+        options
+      );
+    }
+
     return await medicaoRepository.findByObra(obraId, options);
   }
 
   async getByResponsavel(userId, options) {
     return await medicaoRepository.findByResponsavel(userId, options);
+  }
+
+  async getAll(options, userPerfil) {
+    // Apenas supervisores e admins podem ver todas as medições
+    if (![PERFIS.SUPERVISOR, PERFIS.ADMIN].includes(userPerfil)) {
+      throw new ForbiddenError(
+        "Apenas supervisores e administradores podem listar todas as medições"
+      );
+    }
+    return await medicaoRepository.findAll({}, options);
   }
 
   async aprovar(medicaoId, userId, userPerfil) {
@@ -114,7 +148,7 @@ class MedicaoService {
 
     // Verificar permissão
     if (
-      medicao.responsavel.toString() !== userId &&
+      Number(medicao.responsavel) !== Number(userId) &&
       userPerfil !== PERFIS.ADMIN
     ) {
       throw new ForbiddenError(

@@ -33,11 +33,15 @@ router.post(
 );
 
 /**
- * @route GET /api/files/:id
- * @desc Obter arquivo por ID
- * @access Private
+ * @route GET /api/files/storage/usage
+ * @desc Obter uso de armazenamento
+ * @access Admin
  */
-router.get("/:id", arquivoController.getById);
+router.get(
+  "/storage/usage",
+  authorize(PERFIS.ADMIN),
+  arquivoController.getStorageUsage,
+);
 
 /**
  * @route GET /api/files/obra/:obraId
@@ -54,15 +58,11 @@ router.get("/obra/:obraId", arquivoController.getByObra);
 router.get("/tipo/:tipo", arquivoController.getByTipo);
 
 /**
- * @route GET /api/files/storage/usage
- * @desc Obter uso de armazenamento
- * @access Admin
+ * @route GET /api/files/:id
+ * @desc Obter arquivo por ID
+ * @access Private
  */
-router.get(
-  "/storage/usage",
-  authorize(PERFIS.ADMIN),
-  arquivoController.getStorageUsage,
-);
+router.get("/:id", arquivoController.getById);
 
 /**
  * @route DELETE /api/files/:id

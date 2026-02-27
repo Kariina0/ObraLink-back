@@ -36,7 +36,16 @@ const authenticate = async (req, res, next) => {
 
     next();
   } catch (error) {
-    next(new UnauthorizedError("Token inválido ou expirado"));
+    // Erros JWT → 401. Erros de infraestrutura (banco, rede) → propagam como 500.
+    if (
+      error.name === "JsonWebTokenError" ||
+      error.name === "TokenExpiredError" ||
+      error.name === "NotBeforeError" ||
+      error instanceof UnauthorizedError
+    ) {
+      return next(new UnauthorizedError("Token inválido ou expirado"));
+    }
+    return next(error);
   }
 };
 

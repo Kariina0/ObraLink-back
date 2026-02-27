@@ -6,28 +6,81 @@ const { retryWithBackoff } = require("../utils/helpers");
 const logger = require("../utils/logger");
 
 class SyncService {
+  _parseMetadata(metadata) {
+    if (!metadata) return {};
+    if (typeof metadata === "object") return metadata;
+    if (typeof metadata === "string") {
+      try {
+        return JSON.parse(metadata);
+      } catch (error) {
+        return {};
+      }
+    }
+    return {};
+  }
+
+  _recordUpdatedAt(record) {
+    if (!record) return null;
+    const metadata = this._parseMetadata(record.metadata);
+
+    const candidates = [
+      metadata.updatedAt,
+      metadata.createdAt,
+      record.updated_at,
+      record.created_at,
+      record.updatedAt,
+      record.createdAt,
+      record.dataAprovacao,
+      record.dataSolicitacao,
+    ];
+
+    for (const value of candidates) {
+      if (!value) continue;
+      const date = new Date(value);
+      if (!Number.isNaN(date.getTime())) return date;
+    }
+
+    return null;
+  }
+
+  _isClientNewer(clientTimestamp, record) {
+    const clientTime = new Date(clientTimestamp);
+    if (Number.isNaN(clientTime.getTime())) return false;
+
+    const serverTime = this._recordUpdatedAt(record);
+    if (!serverTime) return true;
+
+    return clientTime > serverTime;
+  }
+
   /**
    * Retorna dados pendentes de sincronização do servidor
    */
   async getPendingData(userId, lastSyncDate) {
-    const filter = {};
-
-    if (lastSyncDate) {
-      filter["metadata.updatedAt"] = { $gt: new Date(lastSyncDate) };
-    }
+    const lastSync = lastSyncDate ? new Date(lastSyncDate) : null;
+    const hasValidLastSync = lastSync && !Number.isNaN(lastSync.getTime());
 
     const [medicoes, diarios, solicitacoes, arquivos] = await Promise.all([
-      medicaoRepository.findAll({ ...filter, responsavel: userId }),
-      diarioRepository.findAll({ ...filter, responsavel: userId }),
-      solicitacaoCompraRepository.findAll({ ...filter, solicitante: userId }),
-      arquivoRepository.findAll({ ...filter, uploadedBy: userId }),
+      medicaoRepository.findAll({ responsavel: userId }, { limit: 1000 }),
+      diarioRepository.findAll({ responsavel: userId }, { limit: 1000 }),
+      solicitacaoCompraRepository.findAll({ solicitante: userId }, { limit: 1000 }),
+      arquivoRepository.findAll({ uploadedBy: userId }, { limit: 1000 }),
     ]);
 
+    const filterByDate = (rows) => {
+      if (!hasValidLastSync) return rows;
+      return rows.filter((row) => {
+        const updatedAt = this._recordUpdatedAt(row);
+        if (!updatedAt) return true;
+        return updatedAt > lastSync;
+      });
+    };
+
     return {
-      medicoes: medicoes.data,
-      diarios: diarios.data,
-      solicitacoes: solicitacoes.data,
-      arquivos: arquivos.data,
+      medicoes: filterByDate(medicoes.data),
+      diarios: filterByDate(diarios.data),
+      solicitacoes: filterByDate(solicitacoes.data),
+      arquivos: filterByDate(arquivos.data),
       timestamp: new Date(),
     };
   }
@@ -146,10 +199,7 @@ class SyncService {
 
     if (existing) {
       // Resolver conflito usando Last-Write-Wins
-      const clientTime = new Date(medicaoData.clientTimestamp);
-      const serverTime = existing.metadata.updatedAt;
-
-      if (clientTime > serverTime) {
+      if (this._isClientNewer(medicaoData.clientTimestamp, existing)) {
         // Cliente mais recente, atualizar
         logger.info(
           `Resolvendo conflito de medição ${medicaoData.syncId} - Cliente vence`,
@@ -191,10 +241,7 @@ class SyncService {
     const existing = await diarioRepository.findBySyncId(diarioData.syncId);
 
     if (existing) {
-      const clientTime = new Date(diarioData.clientTimestamp);
-      const serverTime = existing.metadata.updatedAt;
-
-      if (clientTime > serverTime) {
+      if (this._isClientNewer(diarioData.clientTimestamp, existing)) {
         logger.info(
           `Resolvendo conflito de diário ${diarioData.syncId} - Cliente vence`,
         );
@@ -232,10 +279,7 @@ class SyncService {
     );
 
     if (existing) {
-      const clientTime = new Date(solicitacaoData.clientTimestamp);
-      const serverTime = existing.metadata.updatedAt;
-
-      if (clientTime > serverTime) {
+      if (this._isClientNewer(solicitacaoData.clientTimestamp, existing)) {
         logger.info(
           `Resolvendo conflito de solicitação ${solicitacaoData.syncId} - Cliente vence`,
         );
@@ -274,7 +318,11 @@ class SyncService {
         );
         if (serverVersion) {
           const clientTime = new Date(medicao.clientTimestamp);
-          const serverTime = serverVersion.metadata.updatedAt;
+          const serverTime = this._recordUpdatedAt(serverVersion);
+
+          if (Number.isNaN(clientTime.getTime()) || !serverTime) {
+            continue;
+          }
 
           if (Math.abs(clientTime - serverTime) > 1000) {
             // Diferença > 1 segundo

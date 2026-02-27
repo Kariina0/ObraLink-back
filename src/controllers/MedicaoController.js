@@ -18,12 +18,39 @@ class MedicaoController {
   });
 
   /**
+   * @route GET /api/measurements
+   * @desc Listar todas as medições (supervisor/admin)
+   * @access Supervisor, Admin
+   */
+  getAll = asyncHandler(async (req, res) => {
+    const { page, limit } = req.query;
+    const result = await medicaoService.getAll(
+      { page, limit },
+      req.user.perfil
+    );
+
+    const { pagination } = paginate(page, limit, result.total);
+
+    res.json(
+      successResponse(
+        result.data.map((m) => new MedicaoDTO(m)),
+        "Medições listadas",
+        pagination
+      )
+    );
+  });
+
+  /**
    * @route GET /api/measurements/:id
    * @desc Obter medição por ID
    * @access Private
    */
   getById = asyncHandler(async (req, res) => {
-    const medicao = await medicaoService.getById(req.params.id);
+    const medicao = await medicaoService.getById(
+      req.params.id,
+      req.user.id,
+      req.user.perfil
+    );
 
     res.json(successResponse(new MedicaoDTO(medicao), "Medição encontrada"));
   });
@@ -35,7 +62,13 @@ class MedicaoController {
    */
   getByObra = asyncHandler(async (req, res) => {
     const { page, limit } = req.query;
-    const result = await medicaoService.getByObra(req.params.obraId, { page, limit });
+    const result = await medicaoService.getByObra(
+      req.params.obraId,
+      { page, limit },
+      req.user.id,
+      req.user.perfil,
+      req.user.obraAtual
+    );
 
     const { pagination } = paginate(page, limit, result.total);
 

@@ -2,11 +2,30 @@ const logger = require("../utils/logger");
 const { AppError } = require("../utils/errors");
 const { errorResponse } = require("../utils/helpers");
 const { ERROR_CODES } = require("../constants");
+const multer = require("multer");
 
 /**
  * Middleware de tratamento de erros
  */
 const errorHandler = (err, req, res, next) => {
+  // ── Erros do Multer ────────────────────────────────────────────────────────
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json(
+        errorResponse(ERROR_CODES.VALIDATION_ERROR, "Arquivo muito grande. Tamanho máximo permitido é 5 MB.", [], 413),
+      );
+    }
+    return res.status(400).json(
+      errorResponse(ERROR_CODES.VALIDATION_ERROR, err.message, [], 400),
+    );
+  }
+
+  // Erro genérico do filtro de tipo (lançado pelo fileFilter via cb(new Error(...)))
+  if (err && err.message && err.message.startsWith("Tipo de arquivo não permitido")) {
+    return res.status(400).json(
+      errorResponse(ERROR_CODES.VALIDATION_ERROR, err.message, [], 400),
+    );
+  }
   // Log do erro
   if (err.statusCode >= 500) {
     logger.error("Erro interno:", {

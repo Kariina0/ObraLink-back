@@ -3,7 +3,8 @@ class ArquivoDTO {
     this.id = arquivo.id || arquivo._id;
     this.nome = arquivo.nome;
     this.nomeOriginal = arquivo.nomeOriginal;
-    this.url = arquivo.url;
+    // URL de acesso ao arquivo (URL assinada quando Supabase, path relativo quando local)
+    this.url = arquivo.storage_url || arquivo.url;
     this.tipo = arquivo.tipo;
     this.mimeType = arquivo.mimeType;
     this.tamanho = arquivo.tamanho;
@@ -17,8 +18,10 @@ class ArquivoDTO {
     this.comprimido = arquivo.comprimido;
     this.sincronizado = arquivo.sincronizado;
     this.syncId = arquivo.syncId;
-    this.createdAt = arquivo.metadata?.createdAt;
-    this.updatedAt = arquivo.metadata?.updatedAt;
+    // Campos de storage
+    this.storageProvider = arquivo.storage_provider || "local";
+    this.createdAt = arquivo.created_at || arquivo.metadata?.createdAt;
+    this.updatedAt = arquivo.updated_at || arquivo.metadata?.updatedAt;
   }
 }
 

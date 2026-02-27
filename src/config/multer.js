@@ -5,25 +5,21 @@ const fs = require("fs");
 const logger = require("../utils/logger");
 const { TIPOS_ARQUIVO } = require("../constants");
 
-// Criar diretório de uploads se não existir
+const isSupabase = (process.env.STORAGE_PROVIDER || "local") === "supabase";
+
+// --- Storage local (fallback) ---
 const uploadDir = process.env.UPLOAD_PATH || "./uploads";
-if (!fs.existsSync(uploadDir)) {
+if (!isSupabase && !fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// Configuração de armazenamento
-const storage = multer.diskStorage({
+const diskStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // sanitize and whitelist subfolder type
     const requested = String(req.body.tipo || "").trim();
     const allowed = Object.values(TIPOS_ARQUIVO || {});
     const subfolder = allowed.includes(requested) ? requested : "outros";
     const dest = path.join(uploadDir, subfolder);
-
-    if (!fs.existsSync(dest)) {
-      fs.mkdirSync(dest, { recursive: true });
-    }
-
+    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
     cb(null, dest);
   },
   filename: (req, file, cb) => {
@@ -32,14 +28,14 @@ const storage = multer.diskStorage({
   },
 });
 
-// Filtro de tipos de arquivo
+// --- Filtro de tipos (compartilhado entre os dois modos) ---
 const fileFilter = (req, file, cb) => {
   const allowedTypes = process.env.ALLOWED_FILE_TYPES?.split(",") || [
     "image/jpeg",
     "image/png",
+    "image/jpg",
     "application/pdf",
   ];
-
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
@@ -47,30 +43,35 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// Configuração do multer
+// --- Instância do multer ---
+// Quando STORAGE_PROVIDER=supabase: memoryStorage (buffer em RAM, sem disco)
+// Quando STORAGE_PROVIDER=local   : diskStorage  (salva em ./uploads/)
 const upload = multer({
-  storage,
+  storage: isSupabase ? multer.memoryStorage() : diskStorage,
   fileFilter,
   limits: {
-    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024, // 5MB padrão
+    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024, // 5 MB
   },
 });
 
-// Middleware para limpeza de uploads falhos
+// --- Limpeza de uploads falhos (apenas modo local) ---
 const cleanupOnError = (req, res, next) => {
-  res.on("finish", () => {
-    if (res.statusCode >= 400 && req.files) {
-      const files = Array.isArray(req.files)
-        ? req.files
-        : Object.values(req.files).flat();
-
-      files.forEach((file) => {
-        fs.unlink(file.path, (err) => {
-          if (err) logger.error("Erro ao remover arquivo:", err);
+  if (!isSupabase) {
+    res.on("finish", () => {
+      if (res.statusCode >= 400 && req.files) {
+        const files = Array.isArray(req.files)
+          ? req.files
+          : Object.values(req.files).flat();
+        files.forEach((file) => {
+          if (file.path) {
+            fs.unlink(file.path, (err) => {
+              if (err) logger.error("Erro ao remover arquivo:", err);
+            });
+          }
         });
-      });
-    }
-  });
+      }
+    });
+  }
   next();
 };
 
@@ -78,4 +79,5 @@ module.exports = {
   upload,
   cleanupOnError,
   uploadDir,
+  isSupabase,
 };

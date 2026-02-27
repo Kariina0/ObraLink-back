@@ -5,9 +5,9 @@ const router = express.Router();
 const authRoutes = require("./auth");
 const measurementRoutes = require("./measurements");
 const fileRoutes = require("./files");
-const syncRoutes = require("./sync"); 
-const purchaseRoutes = require("./purchaseRoutes");
+const syncRoutes = require("./sync");
 const obrasRoutes = require("./obras");
+const solicitacoesRoutes = require("./solicitacoes");
 
 // Rota de health check
 router.get("/health", (req, res) => {
@@ -20,11 +20,11 @@ router.get("/health", (req, res) => {
 });
 
 // Registrar rotas
-router.use("/auth", authRoutes);
+router.use("/auth",         authRoutes);
 router.use("/measurements", measurementRoutes);
-router.use("/files", fileRoutes);
-router.use("/sync", syncRoutes);
-router.use("/purchases", purchaseRoutes);
-router.use("/obras", obrasRoutes);
+router.use("/files",        fileRoutes);
+router.use("/sync",         syncRoutes);
+router.use("/obras",        obrasRoutes);
+router.use("/solicitacoes", solicitacoesRoutes);
 
 module.exports = router;

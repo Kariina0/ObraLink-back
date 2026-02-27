@@ -1,7 +1,12 @@
+/**
+ * DEPRECATED: Este script era para MongoDB/Mongoose.
+ * Use `npm run seed:sqlite` para popular o banco SQLite.
+ */
+console.error("\n❌ Este script está depreciado. Use: npm run seed:sqlite\n");
+process.exit(1);
+
+// Código abaixo mantido apenas como referência histórica.
 require("dotenv").config();
-const database = require("../src/config/database");
-const User = require("../src/models/User");
-const Obra = require("../src/models/Obra");
 const logger = require("../src/utils/logger");
 
 async function seed() {

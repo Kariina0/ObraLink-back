@@ -6,10 +6,13 @@ const {
   ValidationError,
 } = require("../utils/errors");
 const { generateSyncId } = require("../utils/helpers");
+const { PERFIS } = require("../constants");
 const bcrypt = require("bcryptjs");
 
 class AuthService {
   async register(userData) {
+    userData.perfil = PERFIS.ENCARREGADO;
+
     // Verificar se email já existe
     const existingUser = await userRepository.findByEmail(userData.email);
     if (existingUser) {

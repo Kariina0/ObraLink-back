@@ -23,13 +23,11 @@ const medicaoItemSchema = Joi.object({
 });
 
 const createMedicaoSchema = Joi.object({
-  obra: Joi.string()
-    .required()
-    .regex(/^[0-9a-fA-F]{24}$/)
-    .messages({
-      "string.empty": "Obra é obrigatória",
-      "string.pattern.base": "ID de obra inválido",
-    }),
+  obra: Joi.number().integer().positive().required().messages({
+    "number.base": "ID de obra deve ser um número inteiro",
+    "number.integer": "ID de obra inválido",
+    "any.required": "Obra é obrigatória",
+  }),
   data: Joi.date().default(() => new Date()),
   periodo: Joi.object({
     inicio: Joi.date(),
@@ -38,7 +36,7 @@ const createMedicaoSchema = Joi.object({
   itens: Joi.array().items(medicaoItemSchema).min(1).required().messages({
     "array.min": "Pelo menos um item é obrigatório",
   }),
-  anexos: Joi.array().items(Joi.string().regex(/^[0-9a-fA-F]{24}$/)),
+  anexos: Joi.array().items(Joi.number().integer().positive()),
   observacoes: Joi.string().allow(""),
   status: Joi.string()
     .valid("rascunho", "enviada", "aprovada", "rejeitada")
@@ -54,7 +52,7 @@ const updateMedicaoSchema = Joi.object({
     fim: Joi.date(),
   }),
   itens: Joi.array().items(medicaoItemSchema).min(1),
-  anexos: Joi.array().items(Joi.string().regex(/^[0-9a-fA-F]{24}$/)),
+  anexos: Joi.array().items(Joi.number().integer().positive()),
   observacoes: Joi.string().allow(""),
   status: Joi.string().valid("rascunho", "enviada", "aprovada", "rejeitada"),
   clientTimestamp: Joi.date(),
