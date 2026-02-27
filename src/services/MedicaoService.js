@@ -21,11 +21,22 @@ class MedicaoService {
       medicaoData.syncId = generateSyncId();
     }
 
+    // Serializar arrays JSON para SQLite
+    if (medicaoData.itens) {
+      medicaoData.itens = JSON.stringify(medicaoData.itens);
+    }
+    if (medicaoData.anexos) {
+      medicaoData.anexos = JSON.stringify(medicaoData.anexos);
+    }
+    if (medicaoData.periodo) {
+      medicaoData.periodo = JSON.stringify(medicaoData.periodo);
+    }
+
     // Adicionar responsável
     medicaoData.responsavel = userId;
-    medicaoData.metadata = {
+    medicaoData.metadata = JSON.stringify({
       createdBy: userId,
-    };
+    });
 
     // Criar medição
     const medicao = await medicaoRepository.create(medicaoData);
@@ -53,6 +64,17 @@ class MedicaoService {
     // Não permitir edição de medições aprovadas
     if (medicao.status === "aprovada" && userPerfil !== PERFIS.ADMIN) {
       throw new ValidationError("Não é possível editar medições aprovadas");
+    }
+
+    // Serializar arrays JSON para SQLite
+    if (medicaoData.itens) {
+      medicaoData.itens = JSON.stringify(medicaoData.itens);
+    }
+    if (medicaoData.anexos) {
+      medicaoData.anexos = JSON.stringify(medicaoData.anexos);
+    }
+    if (medicaoData.periodo) {
+      medicaoData.periodo = JSON.stringify(medicaoData.periodo);
     }
 
     // Atualizar
