@@ -19,8 +19,13 @@ const authenticate = async (req, res, next) => {
     // Verificar token
     const decoded = jwtConfig.verifyAccessToken(token);
 
-    // Buscar usuário
-    const user = await userRepository.findById(decoded.id);
+    // Buscar usuário — se não existir, trata como token inválido (401)
+    let user;
+    try {
+      user = await userRepository.findById(decoded.id);
+    } catch (_) {
+      throw new UnauthorizedError("Usuário não encontrado ou inativo");
+    }
 
     if (!user || !user.isActive) {
       throw new UnauthorizedError("Usuário não encontrado ou inativo");

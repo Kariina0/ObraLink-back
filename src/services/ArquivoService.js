@@ -16,8 +16,21 @@ class ArquivoService {
    *   - STORAGE_PROVIDER=local    → file.path   (diskStorage),   compressão em disco, armazenamento local
    */
   async processUpload(file, metadata, userId) {
-    const { obra, tipo, descricao, tags, coordenadas } = metadata;
+    const { obra, tipo, tipoArquivo, descricao, tags, coordenadas, solicitadoPor, detalheProblema } = metadata;
     const tipoNormalizado = tipo || "outros";
+
+    // ── Validação de campos obrigatórios ──────────────────────────────────────
+    if (!obra) {
+      throw new ValidationError("Obra é obrigatória para o envio de arquivos");
+    }
+    if (!tipoArquivo) {
+      throw new ValidationError(
+        "Tipo do arquivo é obrigatório (ex: solicitacao, problema, relatorio, medicao, foto_obra, documento, outros)",
+      );
+    }
+    if (!descricao || !descricao.trim()) {
+      throw new ValidationError("Descrição do arquivo é obrigatória");
+    }
 
     // ── MODO SUPABASE ─────────────────────────────────────────────────────────
     if (storageService.isSupabase()) {
@@ -68,12 +81,15 @@ class ArquivoService {
         caminho: null,                      // sem caminho físico no servidor
         url: storageUrl,
         tipo: tipoNormalizado,
+        tipoArquivo: tipoArquivo || null,
         mimeType: file.mimetype,
         tamanho: tamanhoFinal,
         tamanhoOriginal: file.size,
         dimensoes: dimensoes ? JSON.stringify(dimensoes) : null,
         coordenadas: coordenadas ? JSON.stringify(coordenadas) : null,
         descricao: descricao || null,
+        detalheProblema: detalheProblema || null,
+        solicitadoPor: solicitadoPor ? Number(solicitadoPor) : null,
         tags: tags ? JSON.stringify(tags.split(",").map((t) => t.trim())) : null,
         obra: obra || null,
         uploadedBy: userId,
@@ -144,12 +160,15 @@ class ArquivoService {
           caminho: processedPath,
           url: `/uploads/${tipoNormalizado}/${path.basename(processedPath)}`,
           tipo: tipoNormalizado,
+          tipoArquivo: tipoArquivo || null,
           mimeType: file.mimetype,
           tamanho: comprimido ? stats.size : file.size,
           tamanhoOriginal,
           dimensoes: JSON.stringify({ largura: imgMeta.width, altura: imgMeta.height }),
           coordenadas: coordenadas ? JSON.stringify(coordenadas) : null,
           descricao: descricao || null,
+          detalheProblema: detalheProblema || null,
+          solicitadoPor: solicitadoPor ? Number(solicitadoPor) : null,
           tags: tags ? JSON.stringify(tags.split(",").map((t) => t.trim())) : null,
           obra: obra || null,
           uploadedBy: userId,
@@ -174,11 +193,14 @@ class ArquivoService {
       caminho: processedPath,
       url: `/uploads/${tipoNormalizado}/${file.filename}`,
       tipo: tipoNormalizado,
+      tipoArquivo: tipoArquivo || null,
       mimeType: file.mimetype,
       tamanho: file.size,
       tamanhoOriginal: file.size,
       coordenadas: coordenadas ? JSON.stringify(coordenadas) : null,
       descricao: descricao || null,
+      detalheProblema: detalheProblema || null,
+      solicitadoPor: solicitadoPor ? Number(solicitadoPor) : null,
       tags: tags ? JSON.stringify(tags.split(",").map((t) => t.trim())) : null,
       obra: obra || null,
       uploadedBy: userId,

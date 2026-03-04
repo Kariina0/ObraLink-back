@@ -19,7 +19,8 @@
     "obras",
     "medicao",
     "nodejs",
-    "mongodb"
+    "sqlite",
+    "express"
   ],
   "author": "",
   "license": "MIT",

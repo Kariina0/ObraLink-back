@@ -9,11 +9,24 @@ const { generateSyncId } = require("../utils/helpers");
 const { PERFIS } = require("../constants");
 
 class MedicaoService {
-  async create(medicaoData, userId) {
+  async create(medicaoData, userId, userPerfil) {
     // Verificar se obra existe
     const obra = await obraRepository.findById(medicaoData.obra);
     if (!obra) {
       throw new NotFoundError("Obra não encontrada");
+    }
+
+    // Encarregado só pode registrar medição em obra à qual está vinculado
+    if (userPerfil === PERFIS.ENCARREGADO) {
+      const vinculado = await obraRepository.isEncarregadoVinculado(
+        medicaoData.obra,
+        userId,
+      );
+      if (!vinculado) {
+        throw new ForbiddenError(
+          "Você não está vinculado a esta obra e não pode registrar medições nela",
+        );
+      }
     }
 
     // Gerar syncId se não fornecido
@@ -109,7 +122,9 @@ class MedicaoService {
 
   async getByObra(obraId, options, userId, userPerfil, obraAtual) {
     if (userPerfil === PERFIS.ENCARREGADO) {
-      if (obraAtual && Number(obraAtual) !== Number(obraId)) {
+      // Verificar vínculo pelo N:N
+      const vinculado = await obraRepository.isEncarregadoVinculado(obraId, userId);
+      if (!vinculado) {
         throw new ForbiddenError(
           "Você não tem permissão para acessar medições desta obra"
         );
@@ -124,18 +139,25 @@ class MedicaoService {
     return await medicaoRepository.findByObra(obraId, options);
   }
 
-  async getByResponsavel(userId, options) {
+  async getByResponsavel(userId, options, filters = {}) {
+    // Se nenhum filtro extra foi informado, usa consulta simples (mais rápida)
+    const hasFilters = filters.obra || filters.status || filters.tipoServico
+      || filters.area || filters.dataInicio || filters.dataFim;
+
+    if (hasFilters) {
+      return await medicaoRepository.findByResponsavelFiltered(userId, filters, options);
+    }
     return await medicaoRepository.findByResponsavel(userId, options);
   }
 
-  async getAll(options, userPerfil) {
+  async getAll(options, userPerfil, filters = {}) {
     // Apenas supervisores e admins podem ver todas as medições
     if (![PERFIS.SUPERVISOR, PERFIS.ADMIN].includes(userPerfil)) {
       throw new ForbiddenError(
         "Apenas supervisores e administradores podem listar todas as medições"
       );
     }
-    return await medicaoRepository.findAll({}, options);
+    return await medicaoRepository.findAllFiltered(filters, options);
   }
 
   async aprovar(medicaoId, userId, userPerfil) {
@@ -181,7 +203,7 @@ class MedicaoService {
     return await medicaoRepository.delete(medicaoId);
   }
 
-  async syncMedicao(medicaoData, userId) {
+  async syncMedicao(medicaoData, userId, userPerfil) {
     // Verificar se já existe pelo syncId
     if (medicaoData.syncId) {
       const existing = await medicaoRepository.findBySyncId(medicaoData.syncId);
@@ -197,7 +219,7 @@ class MedicaoService {
     }
 
     // Criar nova medição
-    return await this.create(medicaoData, userId);
+    return await this.create(medicaoData, userId, userPerfil);
   }
 }
 

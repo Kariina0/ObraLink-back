@@ -52,7 +52,7 @@ class SyncController {
    * @desc Retentar sincronização
    * @access Private
    */
-  retrySynt = asyncHandler(async (req, res) => {
+  retrySync = asyncHandler(async (req, res) => {
     const { syncFunction } = req.body;
 
     const result = await syncService.retrySync(() =>

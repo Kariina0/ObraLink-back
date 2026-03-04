@@ -20,8 +20,102 @@ class ObraRepository extends BaseRepository {
     return await this.findAll({ responsavel: userId }, options);
   }
 
+  // ── N:N encarregado ──────────────────────────────────────────────────────
+
+  /**
+   * Retorna as obras às quais userId está vinculado como encarregado
+   * usando a tabela obra_encarregados.
+   */
+  async findByEncarregado(userId, options = {}) {
+    const { page = 1, limit = 20, status } = options;
+    const offset = (page - 1) * limit;
+    const hasTable = await this.knex.schema.hasTable("obra_encarregados");
+    if (!hasTable) {
+      // fallback: obra atual salvo no campo obraAtual do user
+      return { data: [], total: 0, page, limit };
+    }
+
+    let qb = this.knex("obras")
+      .join("obra_encarregados", "obras.id", "obra_encarregados.obraId")
+      .where("obra_encarregados.userId", userId)
+      .whereRaw("(json_extract(obras.metadata, '$.deletedAt') IS NULL OR obras.metadata NOT LIKE '%\"deletedAt\":%')");
+
+    if (status) qb = qb.andWhere("obras.status", status);
+
+    const countQb = qb.clone().count({ count: "*" });
+    const totalRes = await countQb.first();
+    const total = totalRes ? Number(totalRes.count || totalRes["count(*)"] || 0) : 0;
+
+    const data = await qb.select("obras.*").limit(limit).offset(offset);
+    return { data, total, page, limit };
+  }
+
+  /**
+   * Verifica se um usuário está vinculado a uma obra.
+   */
+  async isEncarregadoVinculado(obraId, userId) {
+    const hasTable = await this.knex.schema.hasTable("obra_encarregados");
+    if (!hasTable) return false;
+    const row = await this.knex("obra_encarregados")
+      .where({ obraId, userId })
+      .first();
+    return Boolean(row);
+  }
+
+  /**
+   * Vincula um encarregado a uma obra (N:N).
+   */
+  async vincularEncarregado(obraId, userId, funcao = "encarregado") {
+    const hasTable = await this.knex.schema.hasTable("obra_encarregados");
+    if (!hasTable) throw new Error("Tabela obra_encarregados não existe. Execute as migrations.");
+
+    const jaExiste = await this.knex("obra_encarregados")
+      .where({ obraId, userId })
+      .first();
+    if (!jaExiste) {
+      await this.knex("obra_encarregados").insert({
+        obraId,
+        userId,
+        funcao,
+        dataInclusao: new Date(),
+      });
+    }
+    return await this.findById(obraId);
+  }
+
+  /**
+   * Desvincula um encarregado de uma obra.
+   */
+  async desvincularEncarregado(obraId, userId) {
+    const hasTable = await this.knex.schema.hasTable("obra_encarregados");
+    if (!hasTable) return;
+    await this.knex("obra_encarregados").where({ obraId, userId }).delete();
+    return await this.findById(obraId);
+  }
+
+  /**
+   * Lista os encarregados vinculados a uma obra.
+   */
+  async listarEncarregados(obraId) {
+    const hasTable = await this.knex.schema.hasTable("obra_encarregados");
+    if (!hasTable) return [];
+    return await this.knex("obra_encarregados")
+      .join("users", "obra_encarregados.userId", "users.id")
+      .where("obra_encarregados.obraId", obraId)
+      .select(
+        "users.id",
+        "users.nome",
+        "users.email",
+        "users.perfil",
+        "obra_encarregados.funcao",
+        "obra_encarregados.dataInclusao",
+      );
+  }
+
+  // ── helpers ──────────────────────────────────────────────────────────────
+
   async findByEquipeMembro(userId, options = {}) {
-    // equipe stored as JSON: filter client-side
+    // equipe stored as JSON: filter client-side (legado)
     const all = await this.findAll({}, { ...options, limit: 10000 });
     const data = all.data.filter((o) => {
       try {

@@ -124,7 +124,9 @@ describe("9.1 — Smoke upload (JPEG → Supabase)", () => {
     const res = await request(app)
       .post("/api/files/upload")
       .set("Authorization", `Bearer ${adminToken}`)
+      .field("obra", "1")
       .field("tipo", "fotos")
+      .field("tipoArquivo", "foto_obra")
       .field("descricao", "Foto de teste")
       .attach("file", FAKE_JPEG, { filename: "foto.jpg", contentType: "image/jpeg" });
 
@@ -146,7 +148,10 @@ describe("9.1 — Smoke upload (JPEG → Supabase)", () => {
     await request(app)
       .post("/api/files/upload")
       .set("Authorization", `Bearer ${adminToken}`)
+      .field("obra", "1")
       .field("tipo", "fotos")
+      .field("tipoArquivo", "foto_obra")
+      .field("descricao", "Foto persistida")
       .attach("file", FAKE_JPEG, { filename: "persist.jpg", contentType: "image/jpeg" });
 
     const db    = getTestDb();
@@ -244,7 +249,10 @@ describe("9.4 — Fallback: STORAGE_PROVIDER=local", () => {
     const res = await request(app)
       .post("/api/files/upload")
       .set("Authorization", `Bearer ${adminToken}`)
+      .field("obra", "1")
       .field("tipo", "fotos")
+      .field("tipoArquivo", "foto_obra")
+      .field("descricao", "Arquivo local de teste")
       .attach("file", FAKE_JPEG, { filename: "local.jpg", contentType: "image/jpeg" });
 
     // Em modo local o multer usa memoryStorage (mock), portanto o
@@ -269,7 +277,10 @@ describe("9.5 — Múltiplos uploads", () => {
     const res = await request(app)
       .post("/api/files/upload-multiple")
       .set("Authorization", `Bearer ${adminToken}`)
+      .field("obra", "1")
       .field("tipo", "fotos")
+      .field("tipoArquivo", "foto_obra")
+      .field("descricao", "Múltiplos arquivos")
       .attach("files", FAKE_JPEG, { filename: "a.jpg", contentType: "image/jpeg" })
       .attach("files", FAKE_JPEG, { filename: "b.jpg", contentType: "image/jpeg" })
       .attach("files", FAKE_JPEG, { filename: "c.jpg", contentType: "image/jpeg" });

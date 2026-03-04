@@ -11,7 +11,11 @@ const bcrypt = require("bcryptjs");
 
 class AuthService {
   async register(userData) {
-    userData.perfil = PERFIS.ENCARREGADO;
+    // Garante perfil válido — padrão ENCARREGADO; ADMIN pode definir SUPERVISOR
+    const perfisPermitidos = [PERFIS.ENCARREGADO, PERFIS.SUPERVISOR];
+    if (!userData.perfil || !perfisPermitidos.includes(userData.perfil)) {
+      userData.perfil = PERFIS.ENCARREGADO;
+    }
 
     // Verificar se email já existe
     const existingUser = await userRepository.findByEmail(userData.email);

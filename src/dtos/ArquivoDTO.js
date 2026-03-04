@@ -6,12 +6,15 @@ class ArquivoDTO {
     // URL de acesso ao arquivo (URL assinada quando Supabase, path relativo quando local)
     this.url = arquivo.storage_url || arquivo.url;
     this.tipo = arquivo.tipo;
+    this.tipoArquivo = arquivo.tipoArquivo || null;
     this.mimeType = arquivo.mimeType;
     this.tamanho = arquivo.tamanho;
     this.tamanhoOriginal = arquivo.tamanhoOriginal;
     this.dimensoes = arquivo.dimensoes;
     this.coordenadas = arquivo.coordenadas;
     this.descricao = arquivo.descricao;
+    this.detalheProblema = arquivo.detalheProblema || null;
+    this.solicitadoPor = arquivo.solicitadoPor || null;
     this.tags = arquivo.tags;
     this.obra = arquivo.obra;
     this.uploadedBy = arquivo.uploadedBy;

@@ -10,13 +10,22 @@ const registerSchema = Joi.object({
     "string.empty": "Email é obrigatório",
     "string.email": "Email inválido",
   }),
-  senha: Joi.string().required().min(6).messages({
-    "string.empty": "Senha é obrigatória",
-    "string.min": "Senha deve ter pelo menos 6 caracteres",
-  }),
+  senha: Joi.string()
+    .required()
+    .min(8)
+    .pattern(/[A-Z]/, "maiúscula")
+    .pattern(/[0-9]/, "número")
+    .messages({
+      "string.empty": "Senha é obrigatória",
+      "string.min": "Senha deve ter pelo menos 8 caracteres",
+      "string.pattern.name": "Senha deve conter ao menos uma letra maiúscula e um número",
+    }),
   perfil: Joi.string()
-    .valid(PERFIS.ENCARREGADO)
-    .default(PERFIS.ENCARREGADO),
+    .valid(PERFIS.ENCARREGADO, PERFIS.SUPERVISOR)
+    .default(PERFIS.ENCARREGADO)
+    .messages({
+      "any.only": "Perfil deve ser 'encarregado' ou 'supervisor'",
+    }),
   obraAtual: Joi.number().integer().positive().allow(null),
 });
 
@@ -34,10 +43,16 @@ const changePasswordSchema = Joi.object({
   senhaAtual: Joi.string().required().messages({
     "string.empty": "Senha atual é obrigatória",
   }),
-  novaSenha: Joi.string().required().min(6).messages({
-    "string.empty": "Nova senha é obrigatória",
-    "string.min": "Nova senha deve ter pelo menos 6 caracteres",
-  }),
+  novaSenha: Joi.string()
+    .required()
+    .min(8)
+    .pattern(/[A-Z]/, "maiúscula")
+    .pattern(/[0-9]/, "número")
+    .messages({
+      "string.empty": "Nova senha é obrigatória",
+      "string.min": "Nova senha deve ter pelo menos 8 caracteres",
+      "string.pattern.name": "Senha deve conter ao menos uma letra maiúscula e um número",
+    }),
 });
 
 module.exports = {

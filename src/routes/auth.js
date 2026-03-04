@@ -1,7 +1,8 @@
 const express = require("express");
 const router = express.Router();
+const rateLimit = require("express-rate-limit");
 const authController = require("../controllers/AuthController");
-const { authenticate } = require("../middleware/auth");
+const { authenticate, authorize } = require("../middleware/auth");
 const { validate } = require("../middleware/validation");
 const {
   registerSchema,
@@ -10,18 +11,40 @@ const {
 } = require("../validators/authValidator");
 
 /**
- * @route POST /api/auth/register
- * @desc Registrar novo usuário
- * @access Public
+ * Rate limiter dedicado para login — mínimo de tentativas para evitar brute-force.
+ * Máximo de 10 tentativas por IP a cada 15 minutos.
  */
-router.post("/register", validate(registerSchema), authController.register);
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX) || 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    status: "fail",
+    message: "Muitas tentativas de login. Tente novamente em 15 minutos.",
+  },
+  skipSuccessfulRequests: true,
+});
+
+/**
+ * @route POST /api/auth/register
+ * @desc Cadastrar novo funcionário — acesso exclusivo ADMIN
+ * @access Private (admin)
+ */
+router.post(
+  "/register",
+  authenticate,
+  authorize("admin"),
+  validate(registerSchema),
+  authController.register
+);
 
 /**
  * @route POST /api/auth/login
  * @desc Login de usuário
  * @access Public
  */
-router.post("/login", validate(loginSchema), authController.login);
+router.post("/login", loginLimiter, validate(loginSchema), authController.login);
 
 /**
  * @route POST /api/auth/refresh
@@ -55,6 +78,18 @@ router.post(
  * @access Private
  */
 router.get("/me", authenticate, authController.me);
+
+/**
+ * @route GET /api/auth/users
+ * @desc Listar usuários (para seleção de encarregados/responsáveis em obras)
+ * @access Admin, Supervisor
+ */
+router.get(
+  "/users",
+  authenticate,
+  authorize("admin", "supervisor"),
+  authController.listUsers
+);
 
 // ✅ Exportar corretamente o router
 module.exports = router;

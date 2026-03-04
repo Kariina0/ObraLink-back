@@ -1,5 +1,5 @@
 const Joi = require("joi");
-const { UNIDADES_MEDIDA } = require("../constants");
+const { UNIDADES_MEDIDA, TIPOS_SERVICO } = require("../constants");
 
 const medicaoItemSchema = Joi.object({
   descricao: Joi.string().required().trim().messages({
@@ -33,6 +33,30 @@ const createMedicaoSchema = Joi.object({
     inicio: Joi.date(),
     fim: Joi.date(),
   }),
+  area: Joi.string().trim().max(100).allow("", null).messages({
+    "string.max": "Nome da área deve ter no máximo 100 caracteres",
+  }),
+  tipoServico: Joi.string()
+    .valid(...TIPOS_SERVICO)
+    .allow("", null)
+    .messages({
+      "any.only": `Tipo de serviço deve ser um dos seguintes: ${TIPOS_SERVICO.join(", ")}`,
+    }),
+  // Dimensões brutas — preservadas individualmente para consultas futuras
+  comprimento: Joi.number().min(0).allow(null).messages({
+    "number.base": "Comprimento deve ser um número",
+    "number.min": "Comprimento não pode ser negativo",
+  }),
+  largura: Joi.number().min(0).allow(null).messages({
+    "number.base": "Largura deve ser um número",
+    "number.min": "Largura não pode ser negativa",
+  }),
+  altura: Joi.number().min(0).allow(null).messages({
+    "number.base": "Altura deve ser um número",
+    "number.min": "Altura não pode ser negativa",
+  }),
+  areaCalculada: Joi.number().min(0).allow(null),
+  volume: Joi.number().min(0).allow(null),
   itens: Joi.array().items(medicaoItemSchema).min(1).required().messages({
     "array.min": "Pelo menos um item é obrigatório",
   }),
@@ -51,6 +75,13 @@ const updateMedicaoSchema = Joi.object({
     inicio: Joi.date(),
     fim: Joi.date(),
   }),
+  area: Joi.string().trim().max(100).allow("", null),
+  tipoServico: Joi.string().valid(...TIPOS_SERVICO).allow("", null),
+  comprimento: Joi.number().min(0).allow(null),
+  largura: Joi.number().min(0).allow(null),
+  altura: Joi.number().min(0).allow(null),
+  areaCalculada: Joi.number().min(0).allow(null),
+  volume: Joi.number().min(0).allow(null),
   itens: Joi.array().items(medicaoItemSchema).min(1),
   anexos: Joi.array().items(Joi.number().integer().positive()),
   observacoes: Joi.string().allow(""),

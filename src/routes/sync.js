@@ -38,6 +38,6 @@ router.post("/conflicts", validate(conflictsSchema), syncController.getConflicts
  * @desc Retentar sincronização
  * @access Private
  */
-router.post("/retry", validate(pushBatchSchema), syncController.retrySynt);
+router.post("/retry", validate(pushBatchSchema), syncController.retrySync);
 
 module.exports = router;

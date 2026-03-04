@@ -123,7 +123,7 @@ describe("processUpload — modo supabase", () => {
       mimetype:     "image/jpeg",
       originalname: "foto.jpg",
     };
-    const metadata = { obra: 5, tipo: "fotos", descricao: "test" };
+    const metadata = { obra: 5, tipo: "fotos", tipoArquivo: "foto_obra", descricao: "test" };
 
     const result = await arquivoService.processUpload(file, metadata, 1);
 
@@ -158,7 +158,7 @@ describe("processUpload — modo supabase", () => {
       filename:    "uuid-pdf.pdf",
     });
 
-    await arquivoService.processUpload(file, { tipo: "documentos" }, 1);
+    await arquivoService.processUpload(file, { obra: 1, tipo: "documentos", tipoArquivo: "documento", descricao: "Documento de teste" }, 1);
 
     expect(mockStorageUpload).toHaveBeenCalledWith(
       file.buffer,
@@ -185,7 +185,7 @@ describe("processMultipleUploads", () => {
       { buffer: jpegBuffer, size: 100, mimetype: "image/jpeg", originalname: "c.jpg" },
     ];
 
-    const results = await arquivoService.processMultipleUploads(files, { tipo: "fotos" }, 1);
+    const results = await arquivoService.processMultipleUploads(files, { obra: 1, tipo: "fotos", tipoArquivo: "foto_obra", descricao: "Fotos da obra" }, 1);
 
     expect(results).toHaveLength(3);
     results.forEach((r) => expect(r.success).toBe(true));
@@ -203,7 +203,7 @@ describe("processMultipleUploads", () => {
       { buffer: jpegBuffer, size: 100, mimetype: "image/jpeg", originalname: "c.jpg" },
     ];
 
-    const results = await arquivoService.processMultipleUploads(files, { tipo: "fotos" }, 1);
+    const results = await arquivoService.processMultipleUploads(files, { obra: 1, tipo: "fotos", tipoArquivo: "foto_obra", descricao: "Fotos da obra" }, 1);
 
     const successes = results.filter((r) => r.success);
     const failures  = results.filter((r) => !r.success);

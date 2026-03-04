@@ -18,7 +18,7 @@ const STATUS_SOLICITACAO = {
 };
 
 /**
- * Tipos de arquivo
+ * Tipos de arquivo (classificação interna)
  */
 const TIPOS_ARQUIVO = {
   FOTO_OBRA: "foto_obra",
@@ -27,6 +27,41 @@ const TIPOS_ARQUIVO = {
   DOCUMENTO: "documento",
   OUTROS: "outros",
 };
+
+/**
+ * Tipos de upload de arquivo (campo tipoArquivo na tabela arquivos)
+ */
+const TIPOS_ARQUIVO_UPLOAD = ["solicitacao", "problema", "relatorio", "medicao", "foto_obra", "documento", "outros"];
+
+/**
+ * Status de obra
+ */
+const STATUS_OBRA = {
+  PLANEJAMENTO: "planejamento",
+  EM_ANDAMENTO: "em_andamento",
+  PAUSADA: "pausada",
+  PARALISADA: "paralisada",
+  CONCLUIDA: "concluida",
+  CANCELADA: "cancelada",
+};
+
+/**
+ * Tipos de serviço de medição
+ */
+const TIPOS_SERVICO = [
+  "alvenaria",
+  "pintura",
+  "revestimento",
+  "instalacao_eletrica",
+  "instalacao_hidraulica",
+  "impermeabilizacao",
+  "estrutura",
+  "cobertura",
+  "acabamento",
+  "demolicao",
+  "escavacao",
+  "outros",
+];
 
 /**
  * Unidades de medida válidas
@@ -98,6 +133,9 @@ module.exports = {
   PERFIS,
   STATUS_SOLICITACAO,
   TIPOS_ARQUIVO,
+  TIPOS_ARQUIVO_UPLOAD,
+  STATUS_OBRA,
+  TIPOS_SERVICO,
   UNIDADES_MEDIDA,
   STATUS_SYNC,
   ERROR_CODES,

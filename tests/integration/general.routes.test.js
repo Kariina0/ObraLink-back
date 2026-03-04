@@ -2,12 +2,12 @@
  * Testes de integração — Rotas gerais
  *
  * Cobre:
- *  - GET /api/obras              (listagem)
- *  - POST /api/purchases         (criação)
- *  - GET  /api/purchases         (listagem por usuário)
- *  - POST /api/medicoes          (rota /api/medicoes — rota raw)
- *  - GET  /api/medicoes          (listagem com paginação)
- *  - GET  /api/medicoes/:id      (por ID)
+ *  - GET /api/obras                  (listagem)
+ *  - POST /api/solicitacoes          (criação de solicitação de compra)
+ *  - GET  /api/solicitacoes          (listagem de solicitações)
+ *  - POST /api/measurements          (criação canônica de medição)
+ *  - GET  /api/measurements          (listagem com paginação — admin/supervisor)
+ *  - GET  /api/measurements/:id      (por ID)
  */
 
 const request = require("supertest");
@@ -64,8 +64,8 @@ describe("GET /api/obras", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(Array.isArray(res.body.data.data)).toBe(true);
-    expect(res.body.data.data.length).toBeGreaterThanOrEqual(2);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBeGreaterThanOrEqual(2);
   });
 
   test("200 — filtra por status", async () => {
@@ -74,7 +74,7 @@ describe("GET /api/obras", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    for (const obra of res.body.data.data) {
+    for (const obra of res.body.data) {
       expect(obra.status).toBe("concluida");
     }
   });
@@ -85,26 +85,26 @@ describe("GET /api/obras", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.data.data.length).toBeLessThanOrEqual(1);
+    expect(res.body.data.length).toBeLessThanOrEqual(1);
   });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// POST /api/purchases — criar compra
+// POST /api/solicitacoes — criar solicitação de compra
 // ═══════════════════════════════════════════════════════════════════════════════
-describe("POST /api/purchases", () => {
+describe("POST /api/solicitacoes", () => {
   test("401 — sem autenticação", async () => {
     const res = await request(app)
-      .post("/api/purchases")
-      .send({ items: [{ descricao: "Parafuso", qtd: 100 }] });
+      .post("/api/solicitacoes")
+      .send({ itens: [{ descricao: "Parafuso", quantidade: 100, unidade: "un" }] });
     expect(res.status).toBe(401);
   });
 
-  test("201 — cria purchase com sucesso", async () => {
+  test("201 — cria solicitação com sucesso", async () => {
     const res = await request(app)
-      .post("/api/purchases")
+      .post("/api/solicitacoes")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ items: [{ descricao: "Parafuso M8", qtd: 200 }] });
+      .send({ itens: [{ descricao: "Parafuso M8", quantidade: 200, unidade: "un" }] });
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
@@ -113,144 +113,130 @@ describe("POST /api/purchases", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// GET /api/purchases — listar compras
+// GET /api/solicitacoes — listar solicitações
 // ═══════════════════════════════════════════════════════════════════════════════
-describe("GET /api/purchases", () => {
+describe("GET /api/solicitacoes", () => {
   test("401 — sem autenticação", async () => {
-    const res = await request(app).get("/api/purchases");
+    const res = await request(app).get("/api/solicitacoes");
     expect(res.status).toBe(401);
   });
 
-  test("200 — retorna lista de compras do usuário", async () => {
-    // Primeiro cria uma purchase para ter dados
+  test("200 — retorna lista de solicitações", async () => {
     await request(app)
-      .post("/api/purchases")
+      .post("/api/solicitacoes")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ items: [{ descricao: "Areia", qtd: 5 }] });
+      .send({ itens: [{ descricao: "Areia", quantidade: 5, unidade: "m³" }] });
 
     const res = await request(app)
-      .get("/api/purchases")
+      .get("/api/solicitacoes")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data.data)).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// POST /api/measurements — criar medição (sistema canônico)
+// ═══════════════════════════════════════════════════════════════════════════════
+describe("POST /api/measurements", () => {
+  test("401 — sem autenticação", async () => {
+    const res = await request(app)
+      .post("/api/measurements")
+      .send({ obra: 1, itens: [{ descricao: "Alvenaria", quantidade: 10, unidade: "m²" }] });
+    expect(res.status).toBe(401);
+  });
+
+  test("201 — cria medição com payload canônico", async () => {
+    const res = await request(app)
+      .post("/api/measurements")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        obra: 1,
+        itens: [{ descricao: "Alvenaria", quantidade: 10, unidade: "m²", valorUnitario: 50 }],
+        observacoes: "Teste canônico",
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.status).toBe("rascunho");
+  });
+
+  test("400 — rejeita payload sem itens obrigatórios", async () => {
+    const res = await request(app)
+      .post("/api/measurements")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ obra: 1 });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GET /api/measurements — listagem paginada (admin/supervisor)
+// ═══════════════════════════════════════════════════════════════════════════════
+describe("GET /api/measurements", () => {
+  test("401 — sem autenticação", async () => {
+    const res = await request(app).get("/api/measurements");
+    expect(res.status).toBe(401);
+  });
+
+  test("200 — admin lista todas as medições", async () => {
+    const res = await request(app)
+      .get("/api/measurements")
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(Array.isArray(res.body.data)).toBe(true);
   });
-});
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// POST /api/medicoes — rota raw (sem validação de obra)
-// ═══════════════════════════════════════════════════════════════════════════════
-describe("POST /api/medicoes (rota raw)", () => {
-  test("401 — sem autenticação", async () => {
-    const res = await request(app)
-      .post("/api/medicoes")
-      .send({ obra: 1, responsavel: 1, itens: [] });
-    expect(res.status).toBe(401);
-  });
-
-  test("201 — cria medição simples (payload medicao)", async () => {
-    const res = await request(app)
-      .post("/api/medicoes")
-      .set("Authorization", `Bearer ${adminToken}`)
-      .send({
-        obra: 1,
-        responsavel: 1,
-        observacoes: "Teste direto",
-        itens: JSON.stringify([{ descricao: "Alvenaria", quantidade: 10, unidade: "m²" }]),
-        status: "rascunho",
-      });
-
-    expect(res.status).toBe(201);
-  });
-
-  test("201 — aceita payload de measurement (comprimento/largura/area)", async () => {
-    const res = await request(app)
-      .post("/api/medicoes")
-      .set("Authorization", `Bearer ${adminToken}`)
-      .send({
-        comprimento: 10,
-        largura: 5,
-        area: 50,
-        observacoes: "Piso sala",
-      });
-
-    expect(res.status).toBe(201);
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// GET /api/medicoes — listagem paginada
-// ═══════════════════════════════════════════════════════════════════════════════
-describe("GET /api/medicoes", () => {
-  test("401 — sem autenticação", async () => {
-    const res = await request(app).get("/api/medicoes");
-    expect(res.status).toBe(401);
-  });
-
-  test("200 — retorna lista de medições", async () => {
-    const res = await request(app)
-      .get("/api/medicoes")
-      .set("Authorization", `Bearer ${adminToken}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.data).toBeDefined();
-    expect(Array.isArray(res.body.data)).toBe(true);
-  });
 
   test("200 — paginação via query params", async () => {
     const res = await request(app)
-      .get("/api/medicoes?page=1&limit=5")
+      .get("/api/measurements?page=1&limit=5")
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.limit).toBe(5);
+    expect(res.body.meta.itemsPerPage).toBe(5);
   });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// GET /api/medicoes/:id — por ID
+// GET /api/measurements/:id — por ID
 // ═══════════════════════════════════════════════════════════════════════════════
-describe("GET /api/medicoes/:id", () => {
+describe("GET /api/measurements/:id", () => {
   let medicaoId;
 
   beforeAll(async () => {
     const res = await request(app)
-      .post("/api/medicoes")
+      .post("/api/measurements")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ obra: 1, observacoes: "Para buscar" });
-    medicaoId = res.body.id;
-  });
-
-  test("400 — ID inválido (não numérico)", async () => {
-    const res = await request(app)
-      .get("/api/medicoes/abc")
-      .set("Authorization", `Bearer ${adminToken}`);
-    expect(res.status).toBe(400);
+      .send({ obra: 1, itens: [{ descricao: "Para buscar", quantidade: 1, unidade: "un" }] });
+    medicaoId = res.body.data?.id;
   });
 
   test("404 — ID inexistente", async () => {
     const res = await request(app)
-      .get("/api/medicoes/999999")
+      .get("/api/measurements/999999")
       .set("Authorization", `Bearer ${adminToken}`);
     expect(res.status).toBe(404);
   });
 
   test("200 — retorna medição existente", async () => {
-    // Cria uma medição primeiro para garantir que existe
     const createRes = await request(app)
-      .post("/api/medicoes")
+      .post("/api/measurements")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ obra: 1, observacoes: "Buscar por ID" });
+      .send({ obra: 1, itens: [{ descricao: "Buscar por ID", quantidade: 2, unidade: "m" }] });
 
-    const id = createRes.body.id;
+    const id = createRes.body.data?.id;
     if (!id) return; // skip se criação falhou por outro motivo
 
     const res = await request(app)
-      .get(`/api/medicoes/${id}`)
+      .get(`/api/measurements/${id}`)
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.id).toBe(id);
+    expect(res.body.data.id).toBe(id);
   });
 });

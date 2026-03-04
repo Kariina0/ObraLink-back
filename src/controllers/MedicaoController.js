@@ -10,7 +10,7 @@ class MedicaoController {
    * @access Encarregado, Supervisor, Admin
    */
   create = asyncHandler(async (req, res) => {
-    const medicao = await medicaoService.create(req.body, req.user.id);
+    const medicao = await medicaoService.create(req.body, req.user.id, req.user.perfil);
 
     res.status(201).json(
       successResponse(new MedicaoDTO(medicao), "Medição criada com sucesso")
@@ -23,10 +23,12 @@ class MedicaoController {
    * @access Supervisor, Admin
    */
   getAll = asyncHandler(async (req, res) => {
-    const { page, limit } = req.query;
+    const { page, limit, obra, status, responsavel, dataInicio, dataFim, area, tipoServico } = req.query;
+    const filters = { obra, status, responsavel, dataInicio, dataFim, area, tipoServico };
     const result = await medicaoService.getAll(
       { page, limit },
-      req.user.perfil
+      req.user.perfil,
+      filters,
     );
 
     const { pagination } = paginate(page, limit, result.total);
@@ -35,7 +37,7 @@ class MedicaoController {
       successResponse(
         result.data.map((m) => new MedicaoDTO(m)),
         "Medições listadas",
-        pagination
+        pagination,
       )
     );
   });
@@ -83,12 +85,27 @@ class MedicaoController {
 
   /**
    * @route GET /api/measurements/minhas
-   * @desc Listar medições do usuário atual
+   * @desc Listar medições do usuário atual com filtros opcionais
    * @access Private
+   *
+   * Query params:
+   *  - page        (number)  página atual
+   *  - limit       (number)  itens por página
+   *  - obra        (number)  filtrar por obra
+   *  - status      (string)  filtrar por status: enviada | aprovada | rejeitada
+   *  - tipoServico (string)  tipo de serviço realizado
+   *  - area        (string)  nome do ambiente (quarto, sala, etc.)
+   *  - dataInicio  (string)  data inicial ISO (>=)
+   *  - dataFim     (string)  data final ISO (<=)
    */
   getMinhas = asyncHandler(async (req, res) => {
-    const { page, limit } = req.query;
-    const result = await medicaoService.getByResponsavel(req.user.id, { page, limit });
+    const { page, limit, obra, status, tipoServico, area, dataInicio, dataFim } = req.query;
+    const filters = { obra, status, tipoServico, area, dataInicio, dataFim };
+    const result = await medicaoService.getByResponsavel(
+      req.user.id,
+      { page, limit },
+      filters,
+    );
 
     const { pagination } = paginate(page, limit, result.total);
 

@@ -2,7 +2,7 @@
  * Testes de integração — Rotas /api/auth
  *
  * Cobre:
- *  - POST /api/auth/register  (sucesso, email duplicado, dados inválidos)
+ *  - POST /api/auth/register  (admin-only: sucesso, 401 sem token, 403 perfil incorreto, email duplicado, dados inválidos)
  *  - POST /api/auth/login     (sucesso, credenciais erradas, usuário inativo)
  *  - POST /api/auth/refresh   (token válido, token inválido)
  *  - POST /api/auth/logout    (com e sem autenticação)
@@ -13,7 +13,7 @@
 const request = require("supertest");
 const bcrypt = require("bcryptjs");
 const { setupTestDb, teardownTestDb, getTestDb } = require("../helpers/database");
-const { makeToken } = require("../helpers/auth");
+const { makeToken, adminToken, encarregadoToken } = require("../helpers/auth");
 const jwt = require("jsonwebtoken");
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -67,76 +67,154 @@ describe("GET /api/health", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Register
+// Register — acesso exclusivo ADMIN
 // ═══════════════════════════════════════════════════════════════════════════════
 describe("POST /api/auth/register", () => {
-  test("201 — cria usuário com dados válidos", async () => {
+  test("401 — sem token (acesso público bloqueado)", async () => {
     const res = await request(app).post("/api/auth/register").send({
-      nome: "Novo Usuario",
-      email: `novo_${Date.now()}@construcao.com`,
+      nome: "Sem Token",
+      email: `semtoken_${Date.now()}@construcao.com`,
       senha: "senha123",
-      perfil: "encarregado",
     });
+    expect(res.status).toBe(401);
+    expect(res.body.success).toBe(false);
+  });
+
+  test("403 — token de encarregado é rejeitado", async () => {
+    const user = await createUser({ perfil: "encarregado" });
+    const token = makeToken({ id: user.id, perfil: "encarregado" });
+
+    const res = await request(app)
+      .post("/api/auth/register")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        nome: "Tentativa Encarregado",
+        email: `enc_${Date.now()}@construcao.com`,
+        senha: "senha123",
+      });
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+  });
+
+  test("403 — token de supervisor é rejeitado", async () => {
+    const user = await createUser({ perfil: "supervisor" });
+    const token = makeToken({ id: user.id, perfil: "supervisor" });
+
+    const res = await request(app)
+      .post("/api/auth/register")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        nome: "Tentativa Supervisor",
+        email: `sup_${Date.now()}@construcao.com`,
+        senha: "senha123",
+      });
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+  });
+
+  test("201 — admin cria usuário encarregado com sucesso", async () => {
+    const res = await request(app)
+      .post("/api/auth/register")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        nome: "Novo Encarregado",
+        email: `encarregado_${Date.now()}@construcao.com`,
+        senha: "senha123",
+        perfil: "encarregado",
+      });
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
     expect(res.body.data.user).toBeDefined();
-    expect(res.body.data.accessToken).toBeDefined();
-    expect(res.body.data.refreshToken).toBeDefined();
+    expect(res.body.data.user.perfil).toBe("encarregado");
+    // tokens não devem ser retornados no cadastro admin
+    expect(res.body.data.accessToken).toBeUndefined();
+    expect(res.body.data.refreshToken).toBeUndefined();
     // senha não deve aparecer na resposta
     expect(res.body.data.user.senha).toBeUndefined();
+  });
+
+  test("201 — admin cria usuário supervisor com sucesso", async () => {
+    const res = await request(app)
+      .post("/api/auth/register")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        nome: "Novo Supervisor",
+        email: `supervisor_${Date.now()}@construcao.com`,
+        senha: "senha123",
+        perfil: "supervisor",
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.user.perfil).toBe("supervisor");
   });
 
   test("409 — email já cadastrado", async () => {
     const email = `dup_${Date.now()}@construcao.com`;
     await createUser({ email });
 
-    const res = await request(app).post("/api/auth/register").send({
-      nome: "Duplicado",
-      email,
-      senha: "senha123",
-    });
+    const res = await request(app)
+      .post("/api/auth/register")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        nome: "Duplicado",
+        email,
+        senha: "senha123",
+      });
 
     expect(res.status).toBe(409);
     expect(res.body.success).toBe(false);
   });
 
   test("400 — nome ausente", async () => {
-    const res = await request(app).post("/api/auth/register").send({
-      email: "semNome@construcao.com",
-      senha: "senha123",
-    });
+    const res = await request(app)
+      .post("/api/auth/register")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        email: "semNome@construcao.com",
+        senha: "senha123",
+      });
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
   });
 
   test("400 — email inválido", async () => {
-    const res = await request(app).post("/api/auth/register").send({
-      nome: "Usuario",
-      email: "nao_e_email",
-      senha: "senha123",
-    });
+    const res = await request(app)
+      .post("/api/auth/register")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        nome: "Usuario",
+        email: "nao_e_email",
+        senha: "senha123",
+      });
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
   });
 
   test("400 — senha com menos de 6 caracteres", async () => {
-    const res = await request(app).post("/api/auth/register").send({
-      nome: "Usuario",
-      email: "short@construcao.com",
-      senha: "123",
-    });
+    const res = await request(app)
+      .post("/api/auth/register")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        nome: "Usuario",
+        email: "short@construcao.com",
+        senha: "123",
+      });
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
   });
 
   test("400 — perfil inválido é rejeitado", async () => {
-    const res = await request(app).post("/api/auth/register").send({
-      nome: "Usuario",
-      email: `perfil_${Date.now()}@construcao.com`,
-      senha: "senha123",
-      perfil: "hacker",
-    });
+    const res = await request(app)
+      .post("/api/auth/register")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        nome: "Usuario",
+        email: `perfil_${Date.now()}@construcao.com`,
+        senha: "senha123",
+        perfil: "hacker",
+      });
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
   });

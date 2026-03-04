@@ -2,8 +2,20 @@ class MedicaoDTO {
   constructor(medicao) {
     this.id = medicao.id || medicao._id;
     this.obra = medicao.obra;
+    // obraNome é preenchido quando a query faz JOIN com a tabela obras
+    this.obraNome = medicao.obraNome || null;
     this.responsavel = medicao.responsavel;
+    // responsavelNome é preenchido quando a query faz JOIN com a tabela users
+    this.responsavelNome = medicao.responsavelNome || null;
     this.data = medicao.data;
+    this.area = medicao.area || null;
+    this.tipoServico = medicao.tipoServico || null;
+    // Dimensões brutas (adicionadas na migration 20260304_add_dimensoes_medicao)
+    this.comprimento   = medicao.comprimento   != null ? Number(medicao.comprimento)   : null;
+    this.largura       = medicao.largura       != null ? Number(medicao.largura)       : null;
+    this.altura        = medicao.altura        != null ? Number(medicao.altura)        : null;
+    this.areaCalculada = medicao.areaCalculada != null ? Number(medicao.areaCalculada) : null;
+    this.volume        = medicao.volume        != null ? Number(medicao.volume)        : null;
 
     // SQLite armazena JSON como string — parsear se necessário
     this.periodo = MedicaoDTO._parseJson(medicao.periodo);
