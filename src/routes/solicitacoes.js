@@ -37,6 +37,18 @@ const updateStatusSchema = Joi.object({
   motivoRejeicao: Joi.string().allow("", null),
 });
 
+// ── Helper: desserializa o campo itens (armazenado como JSON string) ─────────
+const deserializeItens = (s) => ({
+  ...s,
+  itens: (() => {
+    if (Array.isArray(s.itens)) return s.itens;
+    if (typeof s.itens === "string") {
+      try { return JSON.parse(s.itens); } catch (_) { return []; }
+    }
+    return [];
+  })(),
+});
+
 // ── Todas as rotas exigem autenticação ────────────────────────────────────────
 router.use(authenticate);
 
@@ -97,7 +109,11 @@ router.get(
       result = await solicitacaoRepository.findAll(filter, opts);
     }
 
-    res.json(successResponse(result, "Solicitações listadas"));
+    const deserializedResult = {
+      ...result,
+      data: Array.isArray(result.data) ? result.data.map(deserializeItens) : result.data,
+    };
+    res.json(successResponse(deserializedResult, "Solicitações listadas"));
   })
 );
 
@@ -121,7 +137,7 @@ router.get(
       throw new ForbiddenError("Você não tem permissão para acessar esta solicitação");
     }
 
-    res.json(successResponse(solicitacao, "Solicitação encontrada"));
+    res.json(successResponse(deserializeItens(solicitacao), "Solicitação encontrada"));
   })
 );
 

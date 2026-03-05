@@ -105,6 +105,17 @@ class AuthService {
     const isPasswordValid = await bcrypt.compare(String(senhaAtual), String(user.senha || ""));
     if (!isPasswordValid) throw new ValidationError("Senha atual incorreta");
 
+    // Validação de complexidade da nova senha
+    if (!novaSenha || novaSenha.length < 8) {
+      throw new ValidationError("A senha deve ter pelo menos 8 caracteres.");
+    }
+    if (!/[A-Z]/.test(novaSenha)) {
+      throw new ValidationError("A senha deve conter ao menos uma letra maiúscula.");
+    }
+    if (!/[0-9]/.test(novaSenha)) {
+      throw new ValidationError("A senha deve conter ao menos um número.");
+    }
+
     const hashed = await bcrypt.hash(String(novaSenha), 12);
     await userRepository.update(userId, { senha: hashed });
     return { message: "Senha alterada com sucesso" };
