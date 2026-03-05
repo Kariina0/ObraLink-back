@@ -119,7 +119,7 @@ describe("POST /api/auth/register", () => {
       .send({
         nome: "Novo Encarregado",
         email: `encarregado_${Date.now()}@construcao.com`,
-        senha: "senha123",
+        senha: "Senha123A",  // política: mínimo 8 chars, maiúscula, número
         perfil: "encarregado",
       });
 
@@ -141,7 +141,7 @@ describe("POST /api/auth/register", () => {
       .send({
         nome: "Novo Supervisor",
         email: `supervisor_${Date.now()}@construcao.com`,
-        senha: "senha123",
+        senha: "Senha123A",  // política: mínimo 8 chars, maiúscula, número
         perfil: "supervisor",
       });
 
@@ -160,7 +160,7 @@ describe("POST /api/auth/register", () => {
       .send({
         nome: "Duplicado",
         email,
-        senha: "senha123",
+        senha: "Senha123A",  // política: mínimo 8 chars, maiúscula, número
       });
 
     expect(res.status).toBe(409);

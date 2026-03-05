@@ -34,7 +34,11 @@ class UserRepository extends BaseRepository {
 
   async exportUserData(userId) {
     await this._ensureTable();
-    const user = await this.findById(userId);
+    const rawUser = await this.findById(userId);
+
+    // I-5: Remove campos sensíveis antes de exportar — hash de senha e refreshToken
+    // não são dados do usuário e não devem constar em exportações LGPD.
+    const { senha, refreshToken, ...safeUser } = rawUser;
 
     const medicoes = await this.knex("medicoes").where({ responsavel: userId }).andWhereRaw("json_extract(metadata, '$.deletedAt') IS NULL OR metadata NOT LIKE '%\"deletedAt\":%'");
     const diarios = await this.knex("diarios").where({ responsavel: userId }).andWhereRaw("json_extract(metadata, '$.deletedAt') IS NULL OR metadata NOT LIKE '%\"deletedAt\":%'");
@@ -42,7 +46,7 @@ class UserRepository extends BaseRepository {
     const arquivos = await this.knex("arquivos").where({ uploadedBy: userId }).andWhereRaw("json_extract(metadata, '$.deletedAt') IS NULL OR metadata NOT LIKE '%\"deletedAt\":%'");
 
     return {
-      usuario: user,
+      usuario: safeUser,
       medicoes,
       diarios,
       solicitacoes,

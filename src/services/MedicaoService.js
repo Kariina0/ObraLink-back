@@ -184,6 +184,15 @@ class MedicaoService {
       );
     }
 
+    // Verificar status atual para evitar rejeições duplicadas (I-4)
+    const medicao = await medicaoRepository.findById(medicaoId);
+    if (medicao.status === "rejeitada") {
+      throw new ValidationError("Medição já está rejeitada");
+    }
+    if (medicao.status === "aprovada") {
+      throw new ValidationError("Não é possível rejeitar uma medição já aprovada");
+    }
+
     return await medicaoRepository.updateStatus(medicaoId, "rejeitada", userId);
   }
 

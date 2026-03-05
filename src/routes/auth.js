@@ -27,6 +27,21 @@ const loginLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter para refresh token — evita abuso do endpoint de renovação.
+ * Máximo de 30 tentativas por IP a cada 15 minutos. (C-3)
+ */
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: parseInt(process.env.REFRESH_RATE_LIMIT_MAX) || 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    status: "fail",
+    message: "Muitas tentativas de renovação de token. Tente novamente em 15 minutos.",
+  },
+});
+
+/**
  * @route POST /api/auth/register
  * @desc Cadastrar novo funcionário — acesso exclusivo ADMIN
  * @access Private (admin)
@@ -49,9 +64,9 @@ router.post("/login", loginLimiter, validate(loginSchema), authController.login)
 /**
  * @route POST /api/auth/refresh
  * @desc Renovar access token
- * @access Public
+ * @access Public (rate limited — C-3)
  */
-router.post("/refresh", authController.refresh);
+router.post("/refresh", refreshLimiter, authController.refresh);
 
 /**
  * @route POST /api/auth/logout

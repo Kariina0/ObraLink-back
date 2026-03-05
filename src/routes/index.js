@@ -15,13 +15,11 @@ const syncRoutes = require("./sync");
 const obrasRoutes = require("./obras");
 const solicitacoesRoutes = require("./solicitacoes");
 
-// Rota de health check
+// Rota de health check — informações mínimas para não expor dados de infraestrutura (I-6)
 router.get("/health", (req, res) => {
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV,
   });
 });
 

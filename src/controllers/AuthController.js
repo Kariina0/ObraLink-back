@@ -103,21 +103,25 @@ class AuthController {
   listUsers = asyncHandler(async (req, res) => {
     const { perfil, page = 1, limit = 100 } = req.query;
 
+    // Cap máximo de 200 itens por página para evitar OOM/timeout (I-3)
+    const safePage  = Math.max(1,   parseInt(page)  || 1);
+    const safeLimit = Math.min(200, Math.max(1, parseInt(limit) || 100));
+
     // Filtra por perfil quando informado; do contrário retorna todos
     const filter = {};
     if (perfil) filter.perfil = perfil;
 
     const result = await userRepository.findAll(filter, {
-      page: parseInt(page),
-      limit: parseInt(limit),
+      page: safePage,
+      limit: safeLimit,
     });
 
     // Remove campos sensíveis antes de retornar
     const users = result.data.map((u) => new UserDTO(u));
     res.json(successResponse(users, "Usuários listados", {
       pagination: {
-        currentPage: parseInt(page),
-        itemsPerPage: parseInt(limit),
+        currentPage: safePage,
+        itemsPerPage: safeLimit,
         totalItems: result.total,
       },
     }));
