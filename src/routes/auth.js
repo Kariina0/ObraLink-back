@@ -8,6 +8,8 @@ const {
   registerSchema,
   loginSchema,
   changePasswordSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
 } = require("../validators/authValidator");
 
 /**
@@ -41,6 +43,28 @@ const refreshLimiter = rateLimit({
   },
 });
 
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: parseInt(process.env.FORGOT_PASSWORD_RATE_LIMIT_MAX) || 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    status: "fail",
+    message: "Muitas solicitações de recuperação. Tente novamente em 15 minutos.",
+  },
+});
+
+const resetPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: parseInt(process.env.RESET_PASSWORD_RATE_LIMIT_MAX) || 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    status: "fail",
+    message: "Muitas tentativas de redefinição. Tente novamente em 15 minutos.",
+  },
+});
+
 /**
  * @route POST /api/auth/register
  * @desc Cadastrar novo funcionário — acesso exclusivo ADMIN
@@ -67,6 +91,30 @@ router.post("/login", loginLimiter, validate(loginSchema), authController.login)
  * @access Public (rate limited — C-3)
  */
 router.post("/refresh", refreshLimiter, authController.refresh);
+
+/**
+ * @route POST /api/auth/forgot-password
+ * @desc Solicitar código para recuperação de senha
+ * @access Public
+ */
+router.post(
+  "/forgot-password",
+  forgotPasswordLimiter,
+  validate(forgotPasswordSchema),
+  authController.forgotPassword,
+);
+
+/**
+ * @route POST /api/auth/reset-password
+ * @desc Redefinir senha usando código recebido
+ * @access Public
+ */
+router.post(
+  "/reset-password",
+  resetPasswordLimiter,
+  validate(resetPasswordSchema),
+  authController.resetPassword,
+);
 
 /**
  * @route POST /api/auth/logout

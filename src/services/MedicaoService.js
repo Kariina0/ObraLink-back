@@ -34,6 +34,18 @@ class MedicaoService {
       medicaoData.syncId = generateSyncId();
     }
 
+    // Calcular areaCalculada e volume automaticamente a partir das dimensões
+    const comprimento = medicaoData.comprimento != null ? Number(medicaoData.comprimento) : null;
+    const largura     = medicaoData.largura     != null ? Number(medicaoData.largura)     : null;
+    const altura      = medicaoData.altura      != null ? Number(medicaoData.altura)      : null;
+
+    if (comprimento != null && largura != null && !isNaN(comprimento) && !isNaN(largura)) {
+      medicaoData.areaCalculada = comprimento * largura;
+      if (altura != null && !isNaN(altura)) {
+        medicaoData.volume = comprimento * largura * altura;
+      }
+    }
+
     // Serializar arrays JSON para SQLite
     if (medicaoData.itens) {
       medicaoData.itens = JSON.stringify(medicaoData.itens);
@@ -77,6 +89,18 @@ class MedicaoService {
     // Não permitir edição de medições aprovadas
     if (medicao.status === "aprovada" && userPerfil !== PERFIS.ADMIN) {
       throw new ValidationError("Não é possível editar medições aprovadas");
+    }
+
+    // Recalcular areaCalculada e volume se dimensões foram atualizadas
+    const comprimento = medicaoData.comprimento != null ? Number(medicaoData.comprimento) : null;
+    const largura     = medicaoData.largura     != null ? Number(medicaoData.largura)     : null;
+    const altura      = medicaoData.altura      != null ? Number(medicaoData.altura)      : null;
+
+    if (comprimento != null && largura != null && !isNaN(comprimento) && !isNaN(largura)) {
+      medicaoData.areaCalculada = comprimento * largura;
+      medicaoData.volume = (altura != null && !isNaN(altura))
+        ? comprimento * largura * altura
+        : null;
     }
 
     // Serializar arrays JSON para SQLite

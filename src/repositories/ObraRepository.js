@@ -30,24 +30,39 @@ class ObraRepository extends BaseRepository {
     const { page = 1, limit = 20, status } = options;
     const offset = (page - 1) * limit;
     const hasTable = await this.knex.schema.hasTable("obra_encarregados");
-    if (!hasTable) {
-      // fallback: obra atual salvo no campo obraAtual do user
+
+    if (hasTable) {
+      let qb = this.knex("obras")
+        .join("obra_encarregados", "obras.id", "obra_encarregados.obraId")
+        .where("obra_encarregados.userId", userId)
+        .whereRaw("(json_extract(obras.metadata, '$.deletedAt') IS NULL OR obras.metadata NOT LIKE '%\"deletedAt\":%')");
+
+      if (status) qb = qb.andWhere("obras.status", status);
+
+      const countQb = qb.clone().count({ count: "*" });
+      const totalRes = await countQb.first();
+      const total = totalRes ? Number(totalRes.count || totalRes["count(*)"] || 0) : 0;
+
+      if (total > 0) {
+        const data = await qb.select("obras.*").limit(limit).offset(offset);
+        return { data, total, page, limit };
+      }
+    }
+
+    // Fallback: usar obraAtual do registro do usuário
+    const user = await this.knex("users").where({ id: userId }).first();
+    if (!user || !user.obraAtual) {
       return { data: [], total: 0, page, limit };
     }
 
-    let qb = this.knex("obras")
-      .join("obra_encarregados", "obras.id", "obra_encarregados.obraId")
-      .where("obra_encarregados.userId", userId)
+    let qbFallback = this.knex("obras")
+      .where("obras.id", user.obraAtual)
       .whereRaw("(json_extract(obras.metadata, '$.deletedAt') IS NULL OR obras.metadata NOT LIKE '%\"deletedAt\":%')");
 
-    if (status) qb = qb.andWhere("obras.status", status);
+    if (status) qbFallback = qbFallback.andWhere("obras.status", status);
 
-    const countQb = qb.clone().count({ count: "*" });
-    const totalRes = await countQb.first();
-    const total = totalRes ? Number(totalRes.count || totalRes["count(*)"] || 0) : 0;
-
-    const data = await qb.select("obras.*").limit(limit).offset(offset);
-    return { data, total, page, limit };
+    const data = await qbFallback.select("obras.*").limit(limit).offset(offset);
+    return { data, total: data.length, page, limit };
   }
 
   /**
@@ -55,11 +70,15 @@ class ObraRepository extends BaseRepository {
    */
   async isEncarregadoVinculado(obraId, userId) {
     const hasTable = await this.knex.schema.hasTable("obra_encarregados");
-    if (!hasTable) return false;
-    const row = await this.knex("obra_encarregados")
-      .where({ obraId, userId })
-      .first();
-    return Boolean(row);
+    if (hasTable) {
+      const row = await this.knex("obra_encarregados")
+        .where({ obraId, userId })
+        .first();
+      if (row) return true;
+    }
+    // Fallback: verificar obraAtual do usuário
+    const user = await this.knex("users").where({ id: userId, obraAtual: obraId }).first();
+    return Boolean(user);
   }
 
   /**

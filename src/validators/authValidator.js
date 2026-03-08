@@ -55,8 +55,42 @@ const changePasswordSchema = Joi.object({
     }),
 });
 
+const forgotPasswordSchema = Joi.object({
+  email: Joi.string().required().email().lowercase().trim().messages({
+    "string.empty": "Email é obrigatório",
+    "string.email": "Email inválido",
+  }),
+});
+
+const resetPasswordSchema = Joi.object({
+  email: Joi.string().required().email().lowercase().trim().messages({
+    "string.empty": "Email é obrigatório",
+    "string.email": "Email inválido",
+  }),
+  codigo: Joi.string().required().pattern(/^\d{6}$/).messages({
+    "string.empty": "Código é obrigatório",
+    "string.pattern.base": "Código deve conter 6 dígitos",
+  }),
+  novaSenha: Joi.string()
+    .required()
+    .min(8)
+    .pattern(/[A-Z]/, "maiúscula")
+    .pattern(/[0-9]/, "número")
+    .messages({
+      "string.empty": "Nova senha é obrigatória",
+      "string.min": "Nova senha deve ter pelo menos 8 caracteres",
+      "string.pattern.name": "Senha deve conter ao menos uma letra maiúscula e um número",
+    }),
+  confirmarSenha: Joi.any().valid(Joi.ref("novaSenha")).required().messages({
+    "any.only": "Confirmação de senha diferente da nova senha",
+    "any.required": "Confirmação de senha é obrigatória",
+  }),
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
   changePasswordSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
 };

@@ -80,6 +80,37 @@ class AuthController {
   });
 
   /**
+   * @route POST /api/auth/forgot-password
+   * @desc Solicitar código para redefinição de senha
+   * @access Public
+   */
+  forgotPassword = asyncHandler(async (req, res) => {
+    const result = await authService.requestPasswordReset(req.body.email);
+
+    const payload = {
+      sent: true,
+      ...(result.devResetCode ? {
+        devResetCode: result.devResetCode,
+        expiresAt: result.expiresAt,
+      } : {}),
+    };
+
+    res.json(successResponse(payload, result.message));
+  });
+
+  /**
+   * @route POST /api/auth/reset-password
+   * @desc Redefinir senha usando código de recuperação
+   * @access Public
+   */
+  resetPassword = asyncHandler(async (req, res) => {
+    const { email, codigo, novaSenha } = req.body;
+    await authService.resetPasswordWithCode({ email, codigo, novaSenha });
+
+    res.json(successResponse(null, "Senha redefinida com sucesso"));
+  });
+
+  /**
    * @route GET /api/auth/me
    * @desc Obter dados do usuário atual
    * @access Private

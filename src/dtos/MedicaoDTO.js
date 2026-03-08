@@ -11,11 +11,11 @@ class MedicaoDTO {
     this.area = medicao.area || null;
     this.tipoServico = medicao.tipoServico || null;
     // Dimensões brutas (adicionadas na migration 20260304_add_dimensoes_medicao)
-    this.comprimento   = medicao.comprimento   != null ? Number(medicao.comprimento)   : null;
-    this.largura       = medicao.largura       != null ? Number(medicao.largura)       : null;
-    this.altura        = medicao.altura        != null ? Number(medicao.altura)        : null;
-    this.areaCalculada = medicao.areaCalculada != null ? Number(medicao.areaCalculada) : null;
-    this.volume        = medicao.volume        != null ? Number(medicao.volume)        : null;
+    this.comprimento   = MedicaoDTO._toNumber(medicao.comprimento);
+    this.largura       = MedicaoDTO._toNumber(medicao.largura);
+    this.altura        = MedicaoDTO._toNumber(medicao.altura);
+    this.areaCalculada = MedicaoDTO._toNumber(medicao.areaCalculada);
+    this.volume        = MedicaoDTO._toNumber(medicao.volume);
 
     // SQLite armazena JSON como string — parsear se necessário
     this.periodo = MedicaoDTO._parseJson(medicao.periodo);
@@ -38,6 +38,13 @@ class MedicaoDTO {
     this.valorTotal = Array.isArray(this.itens)
       ? this.itens.reduce((total, item) => total + (Number(item.valorTotal) || 0), 0)
       : 0;
+  }
+
+  /** Converte para número, retornando null em vez de NaN */
+  static _toNumber(value) {
+    if (value == null) return null;
+    const n = Number(value);
+    return isNaN(n) ? null : n;
   }
 
   static _parseJson(value, fallback = null) {

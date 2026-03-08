@@ -8,6 +8,7 @@ const {
 const { generateSyncId } = require("../utils/helpers");
 const { PERFIS } = require("../constants");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 
 class AuthService {
   async register(userData) {
@@ -119,6 +120,72 @@ class AuthService {
     const hashed = await bcrypt.hash(String(novaSenha), 12);
     await userRepository.update(userId, { senha: hashed });
     return { message: "Senha alterada com sucesso" };
+  }
+
+  async requestPasswordReset(email) {
+    const genericMessage =
+      "Se o e-mail estiver cadastrado, você receberá instruções para redefinir a senha.";
+
+    const user = await userRepository.findByEmail(email);
+    if (!user || !user.isActive) {
+      return { message: genericMessage };
+    }
+
+    const resetCode = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+    const resetHash = await bcrypt.hash(resetCode, 10);
+    const ttlMinutes = parseInt(process.env.RESET_PASSWORD_TTL_MINUTES || "15", 10);
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
+
+    await userRepository.update(user.id, {
+      resetPasswordToken: resetHash,
+      resetPasswordExpiresAt: expiresAt,
+      resetPasswordUsedAt: null,
+    });
+
+    const result = { message: genericMessage };
+
+    if (process.env.NODE_ENV !== "production") {
+      result.devResetCode = resetCode;
+      result.expiresAt = expiresAt.toISOString();
+    }
+
+    return result;
+  }
+
+  async resetPasswordWithCode({ email, codigo, novaSenha }) {
+    const user = await userRepository.findByEmail(email);
+    if (!user || !user.isActive) {
+      throw new UnauthorizedError("Código inválido ou expirado");
+    }
+
+    if (!user.resetPasswordToken || !user.resetPasswordExpiresAt) {
+      throw new UnauthorizedError("Código inválido ou expirado");
+    }
+
+    if (user.resetPasswordUsedAt) {
+      throw new UnauthorizedError("Código inválido ou expirado");
+    }
+
+    const expiresAt = new Date(user.resetPasswordExpiresAt);
+    if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() < Date.now()) {
+      throw new UnauthorizedError("Código inválido ou expirado");
+    }
+
+    const isValidCode = await bcrypt.compare(String(codigo), String(user.resetPasswordToken));
+    if (!isValidCode) {
+      throw new UnauthorizedError("Código inválido ou expirado");
+    }
+
+    const hashedSenha = await bcrypt.hash(String(novaSenha), 12);
+    await userRepository.update(user.id, {
+      senha: hashedSenha,
+      refreshToken: null,
+      resetPasswordUsedAt: new Date(),
+      resetPasswordToken: null,
+      resetPasswordExpiresAt: null,
+    });
+
+    return { message: "Senha redefinida com sucesso" };
   }
 }
 
