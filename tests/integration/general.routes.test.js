@@ -240,3 +240,31 @@ describe("GET /api/measurements/:id", () => {
     expect(res.body.data.id).toBe(id);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Compatibilidade legada — /api/medicoes
+// ═══════════════════════════════════════════════════════════════════════════════
+describe("Compatibilidade legada /api/medicoes", () => {
+  test("POST /api/medicoes cria medição com payload canônico", async () => {
+    const res = await request(app)
+      .post("/api/medicoes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        obra: 1,
+        itens: [{ descricao: "Compat legada", quantidade: 3, unidade: "m²", valorUnitario: 30 }],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+  });
+
+  test("GET /api/medicoes lista medições", async () => {
+    const res = await request(app)
+      .get("/api/medicoes?page=1&limit=5")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+  });
+});

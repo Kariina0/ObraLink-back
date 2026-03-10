@@ -86,9 +86,9 @@ class MedicaoService {
       );
     }
 
-    // Não permitir edição de medições aprovadas
-    if (medicao.status === "aprovada" && userPerfil !== PERFIS.ADMIN) {
-      throw new ValidationError("Não é possível editar medições aprovadas");
+    // Não permitir edição de medições já enviadas para fluxo de aprovação
+    if (medicao.status !== "rascunho" && userPerfil !== PERFIS.ADMIN) {
+      throw new ValidationError("Apenas medições em rascunho podem ser editadas");
     }
 
     // Recalcular areaCalculada e volume se dimensões foram atualizadas

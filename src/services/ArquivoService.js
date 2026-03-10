@@ -234,8 +234,8 @@ class ArquivoService {
     const PERFIS = require("../constants").PERFIS;
     const { ForbiddenError } = require("../utils/errors");
     if (
-      userPerfil === PERFIS.ENCARREGADO &&
-      Number(arquivo.uploadedBy) !== Number(userId)
+      Number(arquivo.uploadedBy) !== Number(userId) &&
+      userPerfil !== PERFIS.ADMIN
     ) {
       throw new ForbiddenError("Você não tem permissão para acessar este arquivo");
     }
@@ -309,11 +309,11 @@ class ArquivoService {
     const arquivo = await arquivoRepository.findById(arquivoId);
 
     const PERFIS = require("../constants").PERFIS;
+    const { ForbiddenError } = require("../utils/errors");
     if (
       Number(arquivo.uploadedBy) !== Number(userId) &&
       userPerfil !== PERFIS.ADMIN
     ) {
-      const { ForbiddenError } = require("../utils/errors");
       throw new ForbiddenError("Você não tem permissão para excluir este arquivo");
     }
 

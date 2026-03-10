@@ -1,5 +1,6 @@
 const authService = require("../services/AuthService");
 const userRepository = require("../repositories/UserRepository");
+const medicaoRepository = require("../repositories/MedicaoRepository");
 const UserDTO = require("../dtos/UserDTO");
 const { successResponse } = require("../utils/helpers");
 const { asyncHandler } = require("../middleware/errorHandler");
@@ -117,8 +118,25 @@ class AuthController {
    */
   me = asyncHandler(async (req, res) => {
     const user = await userRepository.findById(req.user.id, ["obraAtual"]);
+    let notificacoesPendentes = 0;
+    try {
+      notificacoesPendentes = await medicaoRepository.getUnreadStatusCountByResponsavel(req.user.id);
+    } catch (_) {
+      notificacoesPendentes = 0;
+    }
+    user.notificacoesPendentes = notificacoesPendentes;
 
     res.json(successResponse(new UserDTO(user), "Dados do usuário"));
+  });
+
+  /**
+   * @route POST /api/auth/notifications/read
+   * @desc Marcar notificações de status de medição como lidas
+   * @access Private
+   */
+  markNotificationsRead = asyncHandler(async (req, res) => {
+    const total = await medicaoRepository.markStatusAsReadByResponsavel(req.user.id);
+    res.json(successResponse({ total }, "Notificações marcadas como lidas"));
   });
 
   /**

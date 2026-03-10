@@ -8,6 +8,7 @@ class UserDTO {
     this.isActive = user.isActive;
     this.lastSync = user.lastSync;
     this.syncId = user.syncId;
+    this.notificacoesPendentes = Number(user.notificacoesPendentes || 0);
     this.createdAt = user.metadata?.createdAt;
     this.updatedAt = user.metadata?.updatedAt;
   }

@@ -41,13 +41,14 @@ jest.mock("../../src/services/StorageService", () => ({
 
 // 3. Mock do UserRepository → o middleware authenticate busca o usuário por ID
 jest.mock("../../src/repositories/UserRepository", () => ({
-  findById: jest.fn().mockResolvedValue({
-    id:       1,
-    email:    "test@construcao.com",
-    perfil:   "admin",
-    isActive: true,
+  findById: jest.fn().mockImplementation(async (id) => {
+    const users = {
+      1: { id: 1, email: "admin@construcao.com", perfil: "admin", isActive: true },
+      2: { id: 2, email: "encarregado@construcao.com", perfil: "encarregado", isActive: true },
+    };
+    return users[Number(id)] || null;
   }),
-  findOne:  jest.fn().mockResolvedValue(null),
+  findOne: jest.fn().mockResolvedValue(null),
 }));
 
 // ─── App (carregado após os mocks) ────────────────────────────────────────────
@@ -199,6 +200,37 @@ describe("9.2 — URL assinada no GET /api/files/:id", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// 9.2.1 — Autorização (IDOR)
+// ═══════════════════════════════════════════════════════════════════════════════
+describe("9.2.1 — Autorização de acesso por dono/admin", () => {
+  let ownedByAdminId;
+
+  beforeAll(async () => {
+    const db = getTestDb();
+    const [id] = await db("arquivos").insert({
+      nome: "uuid-owned-admin.jpg",
+      nomeOriginal: "owned-admin.jpg",
+      tipo: "fotos",
+      mimeType: "image/jpeg",
+      tamanho: 12000,
+      uploadedBy: 1,
+      storage_provider: "supabase",
+      storage_path: "fotos/uuid-owned-admin.jpg",
+      storage_url: "https://signed.supabase.co/owned-admin.jpg",
+    });
+    ownedByAdminId = id;
+  });
+
+  test("encarregado não pode acessar arquivo de outro usuário", async () => {
+    const res = await request(app)
+      .get(`/api/files/${ownedByAdminId}`)
+      .set("Authorization", `Bearer ${encarregadoToken}`);
+
+    expect(res.status).toBe(403);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // 9.3 — Deleção
 // ═══════════════════════════════════════════════════════════════════════════════
 describe("9.3 — Deleção (banco + Supabase)", () => {
@@ -229,6 +261,37 @@ describe("9.3 — Deleção (banco + Supabase)", () => {
 
     // Supabase delete foi chamado com o path correto
     expect(mockStorageDelete).toHaveBeenCalledWith("fotos/uuid-delete.jpg");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 9.3.1 — Autorização na deleção (IDOR)
+// ═══════════════════════════════════════════════════════════════════════════════
+describe("9.3.1 — Autorização na deleção", () => {
+  let ownedByAdminId;
+
+  beforeAll(async () => {
+    const db = getTestDb();
+    const [id] = await db("arquivos").insert({
+      nome: "uuid-delete-owned-admin.jpg",
+      nomeOriginal: "delete-owned-admin.jpg",
+      tipo: "fotos",
+      mimeType: "image/jpeg",
+      tamanho: 22000,
+      uploadedBy: 1,
+      storage_provider: "supabase",
+      storage_path: "fotos/uuid-delete-owned-admin.jpg",
+      storage_url: "https://signed.supabase.co/delete-owned-admin.jpg",
+    });
+    ownedByAdminId = id;
+  });
+
+  test("encarregado não pode deletar arquivo de outro usuário", async () => {
+    const res = await request(app)
+      .delete(`/api/files/${ownedByAdminId}`)
+      .set("Authorization", `Bearer ${encarregadoToken}`);
+
+    expect(res.status).toBe(403);
   });
 });
 

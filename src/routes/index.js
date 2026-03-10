@@ -14,6 +14,8 @@ const fileRoutes = require("./files");
 const syncRoutes = require("./sync");
 const obrasRoutes = require("./obras");
 const solicitacoesRoutes = require("./solicitacoes");
+const diariosRoutes = require("./diarios");
+const managementRoutes = require("./management");
 
 // Rota de health check — informações mínimas para não expor dados de infraestrutura (I-6)
 router.get("/health", (req, res) => {
@@ -75,9 +77,13 @@ router.get(
 // Registrar rotas
 router.use("/auth",         authRoutes);
 router.use("/measurements", measurementRoutes);
+// Alias legado para compatibilidade temporária com clientes antigos.
+router.use("/medicoes",     measurementRoutes);
 router.use("/files",        fileRoutes);
 router.use("/sync",         syncRoutes);
 router.use("/obras",        obrasRoutes);
 router.use("/solicitacoes", solicitacoesRoutes);
+router.use("/diarios",      diariosRoutes);
+router.use("/management",   managementRoutes);
 
 module.exports = router;

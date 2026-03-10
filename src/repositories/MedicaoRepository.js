@@ -96,7 +96,50 @@ class MedicaoRepository extends BaseRepository {
       update.aprovadoPor = aprovadoPor;
       update.dataAprovacao = new Date();
     }
+    if (["aprovada", "rejeitada"].includes(status)) {
+      update.metadata = {
+        statusNotificado: false,
+        statusMudancaEm: new Date(),
+      };
+    }
     return await this.update(medicaoId, update);
+  }
+
+  async getUnreadStatusCountByResponsavel(userId) {
+    const result = await this.findAll({ responsavel: userId }, { page: 1, limit: 10000 });
+    return result.data.filter((row) => {
+      if (!["aprovada", "rejeitada"].includes(row.status)) return false;
+      try {
+        const meta = row.metadata ? JSON.parse(row.metadata) : {};
+        return meta.statusNotificado === false;
+      } catch (_) {
+        return true;
+      }
+    }).length;
+  }
+
+  async markStatusAsReadByResponsavel(userId) {
+    const result = await this.findAll({ responsavel: userId }, { page: 1, limit: 10000 });
+    const unread = result.data.filter((row) => {
+      if (!["aprovada", "rejeitada"].includes(row.status)) return false;
+      try {
+        const meta = row.metadata ? JSON.parse(row.metadata) : {};
+        return meta.statusNotificado === false;
+      } catch (_) {
+        return true;
+      }
+    });
+
+    for (const row of unread) {
+      await this.update(row.id, {
+        metadata: {
+          statusNotificado: true,
+          statusVisualizadoEm: new Date(),
+        },
+      });
+    }
+
+    return unread.length;
   }
 
   async markAsSynced(medicaoId) {

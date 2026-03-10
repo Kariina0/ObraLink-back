@@ -14,17 +14,14 @@ class DiarioRepository extends BaseRepository {
   }
 
   async findByData(obraId, data) {
-    const iniciodia = new Date(data);
-    iniciodia.setHours(0, 0, 0, 0);
-
-    const fimDia = new Date(data);
-    fimDia.setHours(23, 59, 59, 999);
-
+    const targetDate = new Date(data);
+    if (isNaN(targetDate.getTime())) return null;
+    const targetDay = targetDate.toISOString().slice(0, 10);
     const all = await this.findAll({ obra: obraId }, { limit: 10000 });
     const found = all.data.find((d) => {
       const dt = d.data ? new Date(d.data) : null;
-      if (!dt) return false;
-      return dt >= iniciodia && dt <= fimDia;
+      if (!dt || isNaN(dt.getTime())) return false;
+      return dt.toISOString().slice(0, 10) === targetDay;
     });
     return found || null;
   }

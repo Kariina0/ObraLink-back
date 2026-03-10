@@ -1,0 +1,5 @@
+O que falta para resolver o problema completamente:
+O sistema digitaliza o processo, mas não muda o comportamento do encarregado. O problema central — "encarregados não enviam dentro do prazo" — requer mecanismos ativos: notificações push, lembretes automáticos, alertas de prazo e dashboards de cobrança. São recursos implementáveis com a base existente, mas atualmente ausentes.
+
+Nota final:
+O sistema está ~75% completo para resolver o problema proposto. A base técnica é sólida e extensível. As melhorias críticas (notificações push, PWA com Service Worker, LGPD, HTTPS) são pré-requisitos para uso real em produção. As melhorias importantes (sync bidirecional, edição de medições, dashboard de atrasos) completariam a proposta de valor. O projeto demonstra competência técnica e entendimento do domínio, precisando de iterações focadas nas lacunas identificadas para atingir maturidade de produção.

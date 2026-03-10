@@ -141,6 +141,7 @@ router.post(
  * @access Private
  */
 router.get("/me", authenticate, authController.me);
+router.post("/notifications/read", authenticate, authController.markNotificationsRead);
 
 /**
  * @route GET /api/auth/users

@@ -95,6 +95,29 @@ async function setupFullDb() {
     t.timestamps(true, true);
   });
 
+  // ── Diarios ────────────────────────────────────────────────────────────────
+  await knexInstance.schema.createTable("diarios", (t) => {
+    t.increments("id");
+    t.integer("obra").nullable();
+    t.integer("responsavel").nullable();
+    t.datetime("data").nullable();
+    t.text("clima").nullable();
+    t.text("equipamentos").nullable();
+    t.text("maoDeObra").nullable();
+    t.text("atividades").nullable();
+    t.text("materiais").nullable();
+    t.text("ocorrencias").nullable();
+    t.text("visitantes").nullable();
+    t.text("fotos").nullable();
+    t.text("observacoesGerais").nullable();
+    t.text("assinatura").nullable();
+    t.boolean("sincronizado").defaultTo(false);
+    t.string("syncId").nullable();
+    t.datetime("clientTimestamp").nullable();
+    t.text("metadata").nullable();
+    t.timestamps(true, true);
+  });
+
   // ── Solicitacoes de Compra ─────────────────────────────────────────────────
   await knexInstance.schema.createTable("solicitacoes_compra", (t) => {
     t.increments("id");
