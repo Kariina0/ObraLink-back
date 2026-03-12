@@ -8,7 +8,6 @@ const cors = require("cors");
 const helmet = require("helmet");
 const compression = require("compression");
 const rateLimit = require("express-rate-limit");
-const path = require("path");
 
 const app = express();
 
@@ -46,28 +45,6 @@ const limiter = rateLimit({
 app.use(limiter);
 
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "10mb" }));
-
-const uploadPath = process.env.UPLOAD_PATH || "./uploads";
-const isStorageLocal = (process.env.STORAGE_PROVIDER || "local") === "local";
-
-// Serve o diretório de uploads somente quando o storage for local (modo dev/fallback).
-// Em produção com STORAGE_PROVIDER=supabase este bloco é ignorado pois não há
-// arquivos em disco — tudo vai para o bucket privado do Supabase com URLs assinadas.
-// C-6: Em produção com storage local, emitir aviso claro pois arquivos ficam públicos.
-if (isStorageLocal) {
-  if (process.env.NODE_ENV === "production") {
-    console.warn(
-      "⚠️  AVISO DE SEGURANÇA: STORAGE_PROVIDER=local em produção. " +
-      "Arquivos em /uploads ficam publicamente acessíveis sem autenticação. " +
-      "Use STORAGE_PROVIDER=supabase em produção."
-    );
-  }
-  const { authenticate } = require("./middleware/auth");
-  // Middleware que tenta autenticar mas não bloqueia (pois browser não envia Bearer em img src).
-  // Isso limita acesso às requisições autenticadas via axios (app), mas não impede acesso direto.
-  // Para ambiente totalmente seguro: use STORAGE_PROVIDER=supabase (recomendado em produção).
-  app.use("/uploads", express.static(path.resolve(uploadPath)));
-}
 
 // Rotas — ponto único de registro via routes/index.js
 // Inclui: /api/health, /api/auth, /api/measurements, /api/files, /api/sync, /api/obras, /api/solicitacoes

@@ -32,13 +32,13 @@ class StorageService {
       // C-5: Armazena a chave para sanitização de logs mas NUNCA a loga diretamente.
       this._sensitiveKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-      this.client = createClient(
-        process.env.SUPABASE_URL,
-        this._sensitiveKey,
-        { auth: { persistSession: false } },
-      );
+      this.client = createClient(process.env.SUPABASE_URL, this._sensitiveKey, {
+        auth: { persistSession: false },
+      });
       this.bucket = process.env.SUPABASE_STORAGE_BUCKET || "obras-arquivos";
-      logger.info(`✅ StorageService iniciado — provider: supabase (bucket: ${this.bucket})`);
+      logger.info(
+        `✅ StorageService iniciado — provider: supabase (bucket: ${this.bucket})`,
+      );
     } else {
       this._sensitiveKey = null;
       logger.info("✅ StorageService iniciado — provider: local");
@@ -79,8 +79,13 @@ class StorageService {
         });
 
       if (error) {
-        logger.error("Supabase upload error:", this._sanitizeMessage(error.message));
-        throw new Error(`Falha no upload para Supabase: ${this._sanitizeMessage(error.message)}`);
+        logger.error(
+          "Supabase upload error:",
+          this._sanitizeMessage(error.message),
+        );
+        throw new Error(
+          `Falha no upload para Supabase: ${this._sanitizeMessage(error.message)}`,
+        );
       }
 
       // Gera URL assinada válida por 1 hora
@@ -96,10 +101,10 @@ class StorageService {
     }
 
     // Modo local: arquivo já foi salvo pelo multer diskStorage
-    // Apenas retorna o path e a URL relativa
+    // Apenas retorna o path e a URL relativa (rota autenticada — CC-02)
     return {
       storagePath,
-      storageUrl: `/uploads/${storagePath}`,
+      storageUrl: `/api/files/raw/${storagePath}`,
       provider: "local",
       filename: uniqueName,
     };
@@ -113,7 +118,7 @@ class StorageService {
    */
   async getSignedUrl(storagePath, expiresIn = 3600) {
     if (this.provider !== "supabase") {
-      return `/uploads/${storagePath}`;
+      return `/api/files/raw/${storagePath}`;
     }
 
     const { data, error } = await this.client.storage
@@ -121,8 +126,13 @@ class StorageService {
       .createSignedUrl(storagePath, expiresIn);
 
     if (error) {
-      logger.error("Supabase signed URL error:", this._sanitizeMessage(error.message));
-      throw new Error(`Falha ao gerar URL assinada: ${this._sanitizeMessage(error.message)}`);
+      logger.error(
+        "Supabase signed URL error:",
+        this._sanitizeMessage(error.message),
+      );
+      throw new Error(
+        `Falha ao gerar URL assinada: ${this._sanitizeMessage(error.message)}`,
+      );
     }
 
     return data.signedUrl;
@@ -139,8 +149,13 @@ class StorageService {
         .remove([storagePath]);
 
       if (error) {
-        logger.error("Supabase delete error:", this._sanitizeMessage(error.message));
-        throw new Error(`Falha ao deletar arquivo no Supabase: ${this._sanitizeMessage(error.message)}`);
+        logger.error(
+          "Supabase delete error:",
+          this._sanitizeMessage(error.message),
+        );
+        throw new Error(
+          `Falha ao deletar arquivo no Supabase: ${this._sanitizeMessage(error.message)}`,
+        );
       }
 
       logger.info(`🗑️ Arquivo removido do Supabase: ${storagePath}`);

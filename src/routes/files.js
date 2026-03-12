@@ -1,5 +1,7 @@
 const express = require("express");
 const router = express.Router();
+const fs = require("fs");
+const path = require("path");
 const arquivoController = require("../controllers/ArquivoController");
 const { authenticate, authorize } = require("../middleware/auth");
 const { upload, cleanupOnError } = require("../config/multer");
@@ -60,6 +62,53 @@ router.get("/obra/:obraId", arquivoController.getByObra);
  * @access Private
  */
 router.get("/tipo/:tipo", arquivoController.getByTipo);
+
+/**
+ * @route GET /api/files/raw/:tipo/:filename
+ * @desc Servir arquivo local em disco com autenticação obrigatória (CC-02).
+ *       Substitui o express.static público de /uploads.
+ *       Apenas STORAGE_PROVIDER=local utiliza esta rota; no modo Supabase
+ *       os arquivos são acessados via URLs assinadas diretamente.
+ * @access Private
+ */
+router.get("/raw/:tipo/:filename", async (req, res, next) => {
+  try {
+    const { tipo, filename } = req.params;
+
+    // Proteção contra path traversal: permite apenas caracteres seguros em cada segmento.
+    // Rejeita "../", "%2F", null bytes e qualquer variante de escape.
+    const SAFE_SEGMENT = /^[\w.\-]+$/;
+    if (!SAFE_SEGMENT.test(tipo) || !SAFE_SEGMENT.test(filename)) {
+      return res.status(400).json({ error: "Caminho de arquivo inválido" });
+    }
+
+    const uploadRoot = path.resolve(process.env.UPLOAD_PATH || "./uploads");
+    const filePath = path.resolve(uploadRoot, tipo, filename);
+
+    // Dupla verificação: o path resolvido deve permanecer dentro de uploadRoot.
+    if (!filePath.startsWith(uploadRoot + path.sep)) {
+      return res.status(400).json({ error: "Caminho de arquivo inválido" });
+    }
+
+    await fs.promises.access(filePath);
+
+    const MIME = {
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".png": "image/png",
+      ".pdf": "application/pdf",
+    };
+    const ext = path.extname(filename).toLowerCase();
+    res.setHeader("Content-Type", MIME[ext] || "application/octet-stream");
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    fs.createReadStream(filePath).pipe(res);
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      return res.status(404).json({ error: "Arquivo não encontrado" });
+    }
+    next(err);
+  }
+});
 
 /**
  * @route GET /api/files/:id

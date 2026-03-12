@@ -1,6 +1,10 @@
 const obraRepository = require("../repositories/ObraRepository");
 const userRepository = require("../repositories/UserRepository");
-const { NotFoundError, ForbiddenError, ValidationError } = require("../utils/errors");
+const {
+  NotFoundError,
+  ForbiddenError,
+  ValidationError,
+} = require("../utils/errors");
 const { generateSyncId } = require("../utils/helpers");
 const { PERFIS, STATUS_OBRA } = require("../constants");
 
@@ -38,10 +42,13 @@ class ObraService {
     if (Array.isArray(obraData.encarregados)) {
       for (const enc of obraData.encarregados) {
         const uid = typeof enc === "object" ? enc.userId : enc;
-        const funcao = (typeof enc === "object" && enc.funcao) ? enc.funcao : "encarregado";
+        const funcao =
+          typeof enc === "object" && enc.funcao ? enc.funcao : "encarregado";
         try {
           await obraRepository.vincularEncarregado(obraId, uid, funcao);
-        } catch (_) { /* ignora se usuário não existe */ }
+        } catch (_) {
+          /* ignora se usuário não existe */
+        }
       }
     }
 
@@ -85,7 +92,17 @@ class ObraService {
     const meta = this._parseMeta(obra.metadata);
     meta.deletedAt = new Date();
     meta.deletedBy = userId;
-    await obraRepository.update(obraId, { metadata: JSON.stringify(meta) });
+
+    try {
+      await obraRepository.update(obraId, { metadata: JSON.stringify(meta) });
+    } catch (err) {
+      // BaseRepository.update() chama findById() ao final para retornar o registro
+      // atualizado. Após o soft delete, findById() aplica _applyNotDeleted() e não
+      // encontra mais a obra (agora filtrada como deletada), lançando NotFoundError.
+      // Esse erro é esperado e indica sucesso — a gravação do deletedAt foi concluída.
+      if (!(err instanceof NotFoundError)) throw err;
+    }
+
     return { message: "Obra removida com sucesso" };
   }
 
@@ -97,7 +114,10 @@ class ObraService {
 
     // Encarregado só pode ver obra à qual está vinculado
     if (userPerfil === PERFIS.ENCARREGADO) {
-      const vinculado = await obraRepository.isEncarregadoVinculado(obraId, userId);
+      const vinculado = await obraRepository.isEncarregadoVinculado(
+        obraId,
+        userId,
+      );
       if (!vinculado) {
         throw new ForbiddenError("Você não tem acesso a esta obra");
       }
@@ -126,7 +146,7 @@ class ObraService {
 
     // Hidratar encarregados em cada obra
     const data = await Promise.all(
-      result.data.map(async (o) => this._appendEncarregados(o))
+      result.data.map(async (o) => this._appendEncarregados(o)),
     );
     return { ...result, data };
   }
@@ -136,7 +156,9 @@ class ObraService {
    */
   async vincularEncarregado(obraId, userId, funcao, adminPerfil) {
     if (adminPerfil !== PERFIS.ADMIN) {
-      throw new ForbiddenError("Apenas administradores podem vincular encarregados");
+      throw new ForbiddenError(
+        "Apenas administradores podem vincular encarregados",
+      );
     }
 
     // Verificar se usuário existe
@@ -150,7 +172,9 @@ class ObraService {
    */
   async desvincularEncarregado(obraId, userId, adminPerfil) {
     if (adminPerfil !== PERFIS.ADMIN) {
-      throw new ForbiddenError("Apenas administradores podem desvincular encarregados");
+      throw new ForbiddenError(
+        "Apenas administradores podem desvincular encarregados",
+      );
     }
 
     await obraRepository.desvincularEncarregado(obraId, userId);
@@ -176,7 +200,11 @@ class ObraService {
   _parseMeta(metadata) {
     if (!metadata) return {};
     if (typeof metadata === "object") return metadata;
-    try { return JSON.parse(metadata); } catch { return {}; }
+    try {
+      return JSON.parse(metadata);
+    } catch {
+      return {};
+    }
   }
 }
 

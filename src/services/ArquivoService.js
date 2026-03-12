@@ -16,7 +16,16 @@ class ArquivoService {
    *   - STORAGE_PROVIDER=local    → file.path   (diskStorage),   compressão em disco, armazenamento local
    */
   async processUpload(file, metadata, userId) {
-    const { obra, tipo, tipoArquivo, descricao, tags, coordenadas, solicitadoPor, detalheProblema } = metadata;
+    const {
+      obra,
+      tipo,
+      tipoArquivo,
+      descricao,
+      tags,
+      coordenadas,
+      solicitadoPor,
+      detalheProblema,
+    } = metadata;
     const tipoNormalizado = tipo || "outros";
 
     // ── Validação de campos obrigatórios ──────────────────────────────────────
@@ -53,7 +62,9 @@ class ArquivoService {
           const sharpInstance = sharp(buffer);
           const imgMeta = await sharpInstance.metadata();
           const compressed = await sharpInstance
-            .jpeg({ quality: parseInt(process.env.IMAGE_COMPRESSION_QUALITY) || 80 })
+            .jpeg({
+              quality: parseInt(process.env.IMAGE_COMPRESSION_QUALITY) || 80,
+            })
             .toBuffer();
 
           if (compressed.length < buffer.length) {
@@ -78,7 +89,7 @@ class ArquivoService {
       const arquivoData = {
         nome: filename,
         nomeOriginal: file.originalname,
-        caminho: null,                      // sem caminho físico no servidor
+        caminho: null, // sem caminho físico no servidor
         url: storageUrl,
         tipo: tipoNormalizado,
         tipoArquivo: tipoArquivo || null,
@@ -90,7 +101,9 @@ class ArquivoService {
         descricao: descricao || null,
         detalheProblema: detalheProblema || null,
         solicitadoPor: solicitadoPor ? Number(solicitadoPor) : null,
-        tags: tags ? JSON.stringify(tags.split(",").map((t) => t.trim())) : null,
+        tags: tags
+          ? JSON.stringify(tags.split(",").map((t) => t.trim()))
+          : null,
         obra: obra || null,
         uploadedBy: userId,
         comprimido,
@@ -123,9 +136,14 @@ class ArquivoService {
     if (!isMimeValid) {
       // Remove o arquivo do disco antes de rejeitar a requisição (somente se existe)
       if (processedPath) {
-        await fs.unlink(processedPath).catch((e) =>
-          logger.error("Erro ao remover arquivo inválido do disco:", e.message),
-        );
+        await fs
+          .unlink(processedPath)
+          .catch((e) =>
+            logger.error(
+              "Erro ao remover arquivo inválido do disco:",
+              e.message,
+            ),
+          );
       }
       throw new ValidationError(
         `O conteúdo do arquivo não corresponde ao tipo declarado (${file.mimetype}). Upload rejeitado.`,
@@ -140,7 +158,9 @@ class ArquivoService {
         );
 
         await sharp(file.path)
-          .jpeg({ quality: parseInt(process.env.IMAGE_COMPRESSION_QUALITY) || 80 })
+          .jpeg({
+            quality: parseInt(process.env.IMAGE_COMPRESSION_QUALITY) || 80,
+          })
           .toFile(compressedPath);
 
         const imgMeta = await sharp(compressedPath).metadata();
@@ -158,18 +178,23 @@ class ArquivoService {
           nome: path.basename(processedPath),
           nomeOriginal: file.originalname,
           caminho: processedPath,
-          url: `/uploads/${tipoNormalizado}/${path.basename(processedPath)}`,
+          url: `/api/files/raw/${tipoNormalizado}/${path.basename(processedPath)}`,
           tipo: tipoNormalizado,
           tipoArquivo: tipoArquivo || null,
           mimeType: file.mimetype,
           tamanho: comprimido ? stats.size : file.size,
           tamanhoOriginal,
-          dimensoes: JSON.stringify({ largura: imgMeta.width, altura: imgMeta.height }),
+          dimensoes: JSON.stringify({
+            largura: imgMeta.width,
+            altura: imgMeta.height,
+          }),
           coordenadas: coordenadas ? JSON.stringify(coordenadas) : null,
           descricao: descricao || null,
           detalheProblema: detalheProblema || null,
           solicitadoPor: solicitadoPor ? Number(solicitadoPor) : null,
-          tags: tags ? JSON.stringify(tags.split(",").map((t) => t.trim())) : null,
+          tags: tags
+            ? JSON.stringify(tags.split(",").map((t) => t.trim()))
+            : null,
           obra: obra || null,
           uploadedBy: userId,
           comprimido,
@@ -191,7 +216,7 @@ class ArquivoService {
       nome: file.filename,
       nomeOriginal: file.originalname,
       caminho: processedPath,
-      url: `/uploads/${tipoNormalizado}/${file.filename}`,
+      url: `/api/files/raw/${tipoNormalizado}/${file.filename}`,
       tipo: tipoNormalizado,
       tipoArquivo: tipoArquivo || null,
       mimeType: file.mimetype,
@@ -222,7 +247,11 @@ class ArquivoService {
         const arquivo = await this.processUpload(file, metadata, userId);
         results.push({ success: true, arquivo });
       } catch (error) {
-        results.push({ success: false, filename: file.originalname, error: error.message });
+        results.push({
+          success: false,
+          filename: file.originalname,
+          error: error.message,
+        });
       }
     }
     return results;
@@ -237,13 +266,17 @@ class ArquivoService {
       userPerfil === PERFIS.ENCARREGADO &&
       Number(arquivo.uploadedBy) !== Number(userId)
     ) {
-      throw new ForbiddenError("Você não tem permissão para acessar este arquivo");
+      throw new ForbiddenError(
+        "Você não tem permissão para acessar este arquivo",
+      );
     }
 
     // Se o arquivo está no Supabase, gera URL assinada fresca (1h de validade)
     if (arquivo.storage_provider === "supabase" && arquivo.storage_path) {
       try {
-        arquivo.storage_url = await storageService.getSignedUrl(arquivo.storage_path);
+        arquivo.storage_url = await storageService.getSignedUrl(
+          arquivo.storage_path,
+        );
       } catch (err) {
         logger.error("Erro ao gerar signed URL:", err);
       }
@@ -295,10 +328,7 @@ class ArquivoService {
     const PERFIS = require("../constants").PERFIS;
     const result =
       userPerfil === PERFIS.ENCARREGADO
-        ? await arquivoRepository.findAll(
-            { tipo, uploadedBy: userId },
-            options,
-          )
+        ? await arquivoRepository.findAll({ tipo, uploadedBy: userId }, options)
         : await arquivoRepository.findByTipo(tipo, options);
     // C-1: renova signed URLs para que a listagem nunca retorne links expirados
     await this._renewSignedUrls(result.data);
@@ -314,7 +344,9 @@ class ArquivoService {
       userPerfil !== PERFIS.ADMIN
     ) {
       const { ForbiddenError } = require("../utils/errors");
-      throw new ForbiddenError("Você não tem permissão para excluir este arquivo");
+      throw new ForbiddenError(
+        "Você não tem permissão para excluir este arquivo",
+      );
     }
 
     // ── C-4: Atomicidade no delete ────────────────────────────────────────────
@@ -344,4 +376,3 @@ class ArquivoService {
 }
 
 module.exports = new ArquivoService();
-
