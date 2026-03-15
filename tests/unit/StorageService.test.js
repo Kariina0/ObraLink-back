@@ -132,12 +132,12 @@ describe("StorageService — modo local", () => {
 
     expect(mockUpload).not.toHaveBeenCalled();
     expect(result.provider).toBe("local");
-    expect(result.storageUrl).toMatch(/^\/uploads\/fotos\//);
+    expect(result.storageUrl).toMatch(/^\/api\/files\/raw\/fotos\//);
   });
 
   test("getSignedUrl() em modo local retorna path relativo", async () => {
     const url = await storageService.getSignedUrl("fotos/path.jpg");
-    expect(url).toBe("/uploads/fotos/path.jpg");
+    expect(url).toBe("/api/files/raw/fotos/path.jpg");
     expect(mockSignedUrl).not.toHaveBeenCalled();
   });
 

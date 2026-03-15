@@ -43,7 +43,10 @@ exports.up = async function (knex) {
   await knex.raw("CREATE INDEX IF NOT EXISTS idx_medicoes_obra ON medicoes(obra)");
   await knex.raw("CREATE INDEX IF NOT EXISTS idx_medicoes_responsavel ON medicoes(responsavel)");
   await knex.raw("CREATE INDEX IF NOT EXISTS idx_medicoes_status ON medicoes(status)");
-  await knex.raw("CREATE INDEX IF NOT EXISTS idx_medicoes_tipoServico ON medicoes(tipoServico)");
+  const hasTipoServico = await knex.schema.hasColumn("medicoes", "tipoServico");
+  if (hasTipoServico) {
+    await knex.raw("CREATE INDEX IF NOT EXISTS idx_medicoes_tipoServico ON medicoes(tipoServico)");
+  }
   await knex.raw("CREATE INDEX IF NOT EXISTS idx_medicoes_deletedAt ON medicoes(deletedAt)");
   await knex.raw("CREATE INDEX IF NOT EXISTS idx_medicoes_created_at ON medicoes(created_at)");
 

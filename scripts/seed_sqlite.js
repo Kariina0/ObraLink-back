@@ -1,10 +1,13 @@
 require("dotenv").config();
 const knexfile = require("../knexfile.js");
-const knex = require("knex")(knexfile.development);
+const createKnex = () => require("knex")(knexfile.development);
 const bcrypt = require("bcryptjs");
 const logger = require("../src/utils/logger");
 
-async function seed() {
+async function seed(options = {}) {
+  const { exitOnComplete = true } = options;
+  const knex = createKnex();
+
   try {
     logger.info("🌱 Iniciando seed SQLite...");
 
@@ -13,8 +16,6 @@ async function seed() {
     await knex("diarios").del();
     await knex("solicitacoes_compra").del();
     await knex("arquivos").del();
-    await knex("measurements").del();
-    await knex("purchases").del();
     await knex("obras").del();
     await knex("users").del();
     logger.info("🧹 Dados antigos removidos (SQLite)");
@@ -147,12 +148,29 @@ async function seed() {
     logger.info(" - pedro@construcao.com / encarregado123");
 
     await knex.destroy();
-    process.exit(0);
+
+    if (exitOnComplete) {
+      process.exit(0);
+    }
+
+    return {
+      users: [adminId, supervisorId, enc1Id, enc2Id],
+      obras: [obra1Id, obra2Id, obra3Id],
+    };
   } catch (error) {
     logger.error("❌ Erro ao executar seed SQLite:", error);
     await knex.destroy();
-    process.exit(1);
+
+    if (exitOnComplete) {
+      process.exit(1);
+    }
+
+    throw error;
   }
 }
 
-seed();
+if (require.main === module) {
+  seed();
+}
+
+module.exports = { seed };
