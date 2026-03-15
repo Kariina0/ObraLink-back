@@ -3,9 +3,10 @@ const router = express.Router();
 const Joi = require("joi");
 const solicitacaoRepository = require("../repositories/SolicitacaoCompraRepository");
 const { authenticate, authorize } = require("../middleware/auth");
+const { validate } = require("../middleware/validation");
 const { successResponse } = require("../utils/helpers");
 const { asyncHandler } = require("../middleware/errorHandler");
-const { ValidationError } = require("../utils/errors");
+const { ValidationError, ForbiddenError } = require("../utils/errors");
 const { PERFIS } = require("../constants");
 
 // ── Schemas de validação ──────────────────────────────────────────────────────
@@ -59,23 +60,20 @@ router.use(authenticate);
  */
 router.post(
   "/",
+  validate(createSchema),
   asyncHandler(async (req, res) => {
-    const { error, value } = createSchema.validate(req.body, {
-      abortEarly: false,
-      stripUnknown: true,
-    });
-
-    if (error) {
-      const details = error.details.map((d) => ({
-        field: d.path.join("."),
-        message: d.message,
-      }));
-      throw new ValidationError("Dados inválidos", details);
-    }
+    // Calcular valorTotal a partir dos itens para permitir queries de soma no management
+    const itens = req.body.itens || [];
+    const valorTotal = itens.reduce((acc, item) => {
+      const qty = Number(item.quantidade) || 0;
+      const price = Number(item.valorUnitario) || 0;
+      return acc + qty * price;
+    }, 0);
 
     const solicitacao = await solicitacaoRepository.create({
-      ...value,
-      itens: JSON.stringify(value.itens),
+      ...req.body,
+      itens: JSON.stringify(req.body.itens),
+      valorTotal,
       solicitante: req.user.id,
       status: "pendente",
       dataSolicitacao: new Date(),
@@ -95,20 +93,18 @@ router.post(
 router.get(
   "/",
   asyncHandler(async (req, res) => {
-    const { page = 1, limit = 20, status } = req.query;
-    const opts = { page: parseInt(page), limit: parseInt(limit) };
+    const page  = Math.max(1, parseInt(req.query.page, 10)  || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const { status } = req.query;
+    const opts = { page, limit };
 
-    let result;
+    const filter = {};
     if (req.user.perfil === PERFIS.ENCARREGADO) {
-      const filter = { solicitante: req.user.id };
-      if (status) filter.status = status;
-      result = await solicitacaoRepository.findAll(filter, opts);
-    } else {
-      const filter = {};
-      if (status) filter.status = status;
-      result = await solicitacaoRepository.findAll(filter, opts);
+      filter.solicitante = req.user.id;
     }
+    if (status) filter.status = status;
 
+    const result = await solicitacaoRepository.findAll(filter, opts);
     const deserializedResult = {
       ...result,
       data: Array.isArray(result.data) ? result.data.map(deserializeItens) : result.data,
@@ -125,15 +121,15 @@ router.get(
 router.get(
   "/:id",
   asyncHandler(async (req, res) => {
-    const solicitacao = await solicitacaoRepository.findById(
-      parseInt(req.params.id, 10)
-    );
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id) || id <= 0) throw new ValidationError("ID inválido");
+
+    const solicitacao = await solicitacaoRepository.findById(id);
 
     if (
       req.user.perfil === PERFIS.ENCARREGADO &&
       Number(solicitacao.solicitante) !== Number(req.user.id)
     ) {
-      const { ForbiddenError } = require("../utils/errors");
       throw new ForbiddenError("Você não tem permissão para acessar esta solicitação");
     }
 
@@ -150,10 +146,10 @@ router.post(
   "/:id/aprovar",
   authorize(PERFIS.SUPERVISOR, PERFIS.ADMIN),
   asyncHandler(async (req, res) => {
-    const solicitacao = await solicitacaoRepository.aprovar(
-      parseInt(req.params.id, 10),
-      req.user.id
-    );
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id) || id <= 0) throw new ValidationError("ID inválido");
+
+    const solicitacao = await solicitacaoRepository.aprovar(id, req.user.id);
     res.json(successResponse(solicitacao, "Solicitação aprovada com sucesso"));
   })
 );
@@ -166,20 +162,17 @@ router.post(
 router.post(
   "/:id/rejeitar",
   authorize(PERFIS.SUPERVISOR, PERFIS.ADMIN),
+  validate(updateStatusSchema),
   asyncHandler(async (req, res) => {
-    const { error, value } = updateStatusSchema.validate(req.body, {
-      stripUnknown: true,
-    });
-    if (error) throw new ValidationError(error.details[0].message);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id) || id <= 0) throw new ValidationError("ID inválido");
 
     const solicitacao = await solicitacaoRepository.rejeitar(
-      parseInt(req.params.id, 10),
-      value.motivoRejeicao || null,
+      id,
+      req.body.motivoRejeicao || null,
       req.user.id
     );
-    res.json(
-      successResponse(solicitacao, "Solicitação rejeitada com sucesso")
-    );
+    res.json(successResponse(solicitacao, "Solicitação rejeitada com sucesso"));
   })
 );
 

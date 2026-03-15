@@ -1,1 +1,0 @@
-﻿{"success":true,"data":{"id":51,"nome":"Usuario Teste","email":"teste@example.com","perfil":"encarregado","obraAtual":null,"isActive":1,"lastSync":null,"syncId":"db6f3ce6-929e-46f6-8ff6-6d3dca08ea79-1772217870646"},"meta":{"timestamp":"2026-02-27T18:45:11.315Z"},"message":"Dados do usuário"}

@@ -227,6 +227,7 @@ class SyncService {
         sincronizado: true,
       },
       userId,
+      "encarregado",
     );
   }
 

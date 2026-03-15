@@ -201,7 +201,7 @@ class MedicaoService {
     return await medicaoRepository.updateStatus(medicaoId, "aprovada", userId);
   }
 
-  async rejeitar(medicaoId, userId, userPerfil) {
+  async rejeitar(medicaoId, userId, userPerfil, motivoRejeicao = null) {
     if (![PERFIS.SUPERVISOR, PERFIS.ADMIN].includes(userPerfil)) {
       throw new ForbiddenError(
         "Apenas supervisores e administradores podem rejeitar medições",
@@ -217,7 +217,7 @@ class MedicaoService {
       throw new ValidationError("Não é possível rejeitar uma medição já aprovada");
     }
 
-    return await medicaoRepository.updateStatus(medicaoId, "rejeitada", userId);
+    return await medicaoRepository.updateStatus(medicaoId, "rejeitada", userId, motivoRejeicao);
   }
 
   async delete(medicaoId, userId, userPerfil) {

@@ -1,2 +1,0 @@
-Este é um arquivo de teste para validar o upload de arquivos no sistema de construção civil.
-Simulando um documento ou foto de obra.

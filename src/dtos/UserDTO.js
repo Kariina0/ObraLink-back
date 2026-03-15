@@ -8,8 +8,16 @@ class UserDTO {
     this.isActive = user.isActive;
     this.lastSync = user.lastSync;
     this.syncId = user.syncId;
-    this.createdAt = user.metadata?.createdAt;
-    this.updatedAt = user.metadata?.updatedAt;
+
+    const meta = UserDTO._parseJson(user.metadata, {});
+    this.createdAt = user.created_at || meta.createdAt;
+    this.updatedAt = user.updated_at || meta.updatedAt;
+  }
+
+  static _parseJson(value, fallback = null) {
+    if (value == null) return fallback;
+    if (typeof value !== "string") return value;
+    try { return JSON.parse(value); } catch { return fallback; }
   }
 }
 

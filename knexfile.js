@@ -25,7 +25,7 @@ module.exports = {
       filename: process.env.DB_PATH || "./data/sqlite.db",
     },
     useNullAsDefault: true,
-    pool: { min: 1, max: 10 },
+    pool: { min: 1, max: 1 },
     migrations: {
       directory: "./migrations",
     },

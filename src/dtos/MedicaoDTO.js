@@ -33,6 +33,7 @@ class MedicaoDTO {
     const meta = MedicaoDTO._parseJson(medicao.metadata, {});
     this.createdAt = medicao.created_at || meta.createdAt;
     this.updatedAt = medicao.updated_at || meta.updatedAt;
+    this.motivoRejeicao = meta.motivoRejeicao || null;
 
     // Calcular total somente quando itens é um array
     this.valorTotal = Array.isArray(this.itens)

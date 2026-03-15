@@ -23,7 +23,9 @@ class MedicaoController {
    * @access Supervisor, Admin
    */
   getAll = asyncHandler(async (req, res) => {
-    const { page, limit, obra, status, responsavel, dataInicio, dataFim, area, tipoServico } = req.query;
+    const { page: rawPage, limit: rawLimit, obra, status, responsavel, dataInicio, dataFim, area, tipoServico } = req.query;
+    const page = Math.max(1, parseInt(rawPage, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(rawLimit, 10) || 10));
     const filters = { obra, status, responsavel, dataInicio, dataFim, area, tipoServico };
     const result = await medicaoService.getAll(
       { page, limit },
@@ -63,7 +65,9 @@ class MedicaoController {
    * @access Private
    */
   getByObra = asyncHandler(async (req, res) => {
-    const { page, limit } = req.query;
+    const { page: rawPage, limit: rawLimit } = req.query;
+    const page = Math.max(1, parseInt(rawPage, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(rawLimit, 10) || 10));
     const result = await medicaoService.getByObra(
       req.params.obraId,
       { page, limit },
@@ -99,7 +103,9 @@ class MedicaoController {
    *  - dataFim     (string)  data final ISO (<=)
    */
   getMinhas = asyncHandler(async (req, res) => {
-    const { page, limit, obra, status, tipoServico, area, dataInicio, dataFim } = req.query;
+    const { page: rawPage, limit: rawLimit, obra, status, tipoServico, area, dataInicio, dataFim } = req.query;
+    const page = Math.max(1, parseInt(rawPage, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(rawLimit, 10) || 10));
     const filters = { obra, status, tipoServico, area, dataInicio, dataFim };
     const result = await medicaoService.getByResponsavel(
       req.user.id,
@@ -155,10 +161,15 @@ class MedicaoController {
    * @access Supervisor, Admin
    */
   rejeitar = asyncHandler(async (req, res) => {
+    const motivoRejeicao = typeof req.body?.motivoRejeicao === "string"
+      ? req.body.motivoRejeicao.trim() || null
+      : null;
+
     const medicao = await medicaoService.rejeitar(
       req.params.id,
       req.user.id,
-      req.user.perfil
+      req.user.perfil,
+      motivoRejeicao
     );
 
     res.json(successResponse(new MedicaoDTO(medicao), "Medição rejeitada"));

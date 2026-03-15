@@ -82,7 +82,10 @@ class ArquivoController {
    * @access Private
    */
   getByObra = asyncHandler(async (req, res) => {
-    const { page, limit } = req.query;
+    const rawPage  = parseInt(req.query.page, 10);
+    const rawLimit = parseInt(req.query.limit, 10);
+    const page  = rawPage  > 0 ? rawPage  : 1;
+    const limit = rawLimit > 0 && rawLimit <= 100 ? rawLimit : 20;
     const result = await arquivoService.getByObra(
       req.params.obraId,
       {
@@ -110,7 +113,10 @@ class ArquivoController {
    * @access Private
    */
   getByTipo = asyncHandler(async (req, res) => {
-    const { page, limit } = req.query;
+    const rawPage  = parseInt(req.query.page, 10);
+    const rawLimit = parseInt(req.query.limit, 10);
+    const page  = rawPage  > 0 ? rawPage  : 1;
+    const limit = rawLimit > 0 && rawLimit <= 100 ? rawLimit : 20;
     const result = await arquivoService.getByTipo(
       req.params.tipo,
       {

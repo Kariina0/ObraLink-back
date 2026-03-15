@@ -131,11 +131,41 @@ class ObraRepository extends BaseRepository {
       );
   }
 
+  /**
+   * Carrega encarregados de várias obras em uma única query (evita N+1).
+   * @param {number[]} obraIds
+   * @returns {Object} mapa { obraId: [encarregados] }
+   */
+  async listarEncarregadosBatch(obraIds) {
+    if (!obraIds || obraIds.length === 0) return {};
+    const hasTable = await this.knex.schema.hasTable("obra_encarregados");
+    if (!hasTable) return {};
+    const rows = await this.knex("obra_encarregados")
+      .join("users", "obra_encarregados.userId", "users.id")
+      .whereIn("obra_encarregados.obraId", obraIds)
+      .select(
+        "obra_encarregados.obraId",
+        "users.id",
+        "users.nome",
+        "users.email",
+        "users.perfil",
+        "obra_encarregados.funcao",
+        "obra_encarregados.dataInclusao",
+      );
+    const result = {};
+    for (const row of rows) {
+      const { obraId, ...enc } = row;
+      if (!result[obraId]) result[obraId] = [];
+      result[obraId].push(enc);
+    }
+    return result;
+  }
+
   // ── helpers ──────────────────────────────────────────────────────────────
 
   async findByEquipeMembro(userId, options = {}) {
     // equipe stored as JSON: filter client-side (legado)
-    const all = await this.findAll({}, { ...options, limit: 10000 });
+    const all = await this.findAll({}, { ...options, limit: 500 });
     const data = all.data.filter((o) => {
       try {
         const equipe = o.equipe ? JSON.parse(o.equipe) : [];

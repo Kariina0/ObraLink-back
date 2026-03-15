@@ -176,6 +176,17 @@ class AuthService {
       throw new UnauthorizedError("Código inválido ou expirado");
     }
 
+    // Validação de complexidade da nova senha
+    if (!novaSenha || novaSenha.length < 8) {
+      throw new ValidationError("A senha deve ter pelo menos 8 caracteres.");
+    }
+    if (!/[A-Z]/.test(novaSenha)) {
+      throw new ValidationError("A senha deve conter ao menos uma letra maiúscula.");
+    }
+    if (!/[0-9]/.test(novaSenha)) {
+      throw new ValidationError("A senha deve conter ao menos um número.");
+    }
+
     const hashedSenha = await bcrypt.hash(String(novaSenha), 12);
     await userRepository.update(user.id, {
       senha: hashedSenha,

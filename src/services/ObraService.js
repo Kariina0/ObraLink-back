@@ -144,10 +144,10 @@ class ObraService {
 
     const result = await obraRepository.findAll(filter, options);
 
-    // Hidratar encarregados em cada obra
-    const data = await Promise.all(
-      result.data.map(async (o) => this._appendEncarregados(o)),
-    );
+    // Hidratar encarregados em lote (uma única query ao invés de N queries)
+    const obraIds = result.data.map((o) => o.id);
+    const encMap = await obraRepository.listarEncarregadosBatch(obraIds);
+    const data = result.data.map((o) => ({ ...o, encarregados: encMap[o.id] || [] }));
     return { ...result, data };
   }
 

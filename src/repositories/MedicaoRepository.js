@@ -90,11 +90,15 @@ class MedicaoRepository extends BaseRepository {
     );
   }
 
-  async updateStatus(medicaoId, status, aprovadoPor = null) {
+  async updateStatus(medicaoId, status, aprovadoPor = null, motivoRejeicao = null) {
     const update = { status };
     if (status === "aprovada" && aprovadoPor) {
       update.aprovadoPor = aprovadoPor;
       update.dataAprovacao = new Date();
+    }
+    if (status === "rejeitada" && motivoRejeicao) {
+      // Salva o motivo na metadata para não requerer nova coluna (BaseRepository faz merge)
+      update.metadata = { motivoRejeicao };
     }
     return await this.update(medicaoId, update);
   }

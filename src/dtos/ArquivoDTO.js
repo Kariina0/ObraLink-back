@@ -23,8 +23,16 @@ class ArquivoDTO {
     this.syncId = arquivo.syncId;
     // Campos de storage
     this.storageProvider = arquivo.storage_provider || "local";
-    this.createdAt = arquivo.created_at || arquivo.metadata?.createdAt;
-    this.updatedAt = arquivo.updated_at || arquivo.metadata?.updatedAt;
+
+    const meta = ArquivoDTO._parseJson(arquivo.metadata, {});
+    this.createdAt = arquivo.created_at || meta.createdAt;
+    this.updatedAt = arquivo.updated_at || meta.updatedAt;
+  }
+
+  static _parseJson(value, fallback = null) {
+    if (value == null) return fallback;
+    if (typeof value !== "string") return value;
+    try { return JSON.parse(value); } catch { return fallback; }
   }
 }
 

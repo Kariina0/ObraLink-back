@@ -14,29 +14,46 @@ class DiarioRepository extends BaseRepository {
   }
 
   async findByData(obraId, data) {
+    await this._ensureTable();
     const iniciodia = new Date(data);
     iniciodia.setHours(0, 0, 0, 0);
-
     const fimDia = new Date(data);
     fimDia.setHours(23, 59, 59, 999);
 
-    const all = await this.findAll({ obra: obraId }, { limit: 10000 });
-    const found = all.data.find((d) => {
-      const dt = d.data ? new Date(d.data) : null;
-      if (!dt) return false;
-      return dt >= iniciodia && dt <= fimDia;
-    });
-    return found || null;
+    const qb = this.knex(this.table)
+      .where({ obra: obraId })
+      .andWhere("data", ">=", iniciodia.toISOString())
+      .andWhere("data", "<=", fimDia.toISOString());
+    await this._applyNotDeleted(qb);
+    return (await qb.first()) || null;
   }
 
   async findByPeriodo(obraId, dataInicio, dataFim, options = {}) {
-    const all = await this.findAll({ obra: obraId }, { ...options, limit: 10000 });
-    const data = all.data.filter((d) => {
-      const dt = d.data ? new Date(d.data) : null;
-      if (!dt) return false;
-      return dt >= new Date(dataInicio) && dt <= new Date(dataFim);
-    });
-    return { data, total: data.length, page: 1, limit: data.length };
+    await this._ensureTable();
+    const { page = 1, limit = 20 } = options;
+    const offset = (page - 1) * limit;
+    const inicio = new Date(dataInicio).toISOString();
+    const fim = new Date(dataFim).toISOString();
+
+    const countQb = this.knex(this.table)
+      .where({ obra: obraId })
+      .andWhere("data", ">=", inicio)
+      .andWhere("data", "<=", fim)
+      .count({ count: "*" });
+    await this._applyNotDeleted(countQb);
+    const totalRes = await countQb.first();
+    const total = totalRes ? Number(totalRes.count || 0) : 0;
+
+    const dataQb = this.knex(this.table)
+      .where({ obra: obraId })
+      .andWhere("data", ">=", inicio)
+      .andWhere("data", "<=", fim)
+      .orderBy("data", "asc")
+      .limit(limit)
+      .offset(offset);
+    await this._applyNotDeleted(dataQb);
+    const rows = await dataQb;
+    return { data: rows, total, page, limit };
   }
 
   async findPendentes(options = {}) {

@@ -12,6 +12,22 @@ yarn.lock
 uploads/
 *.log
 
+# Data
+data/
+
+# Logs
+logs/
+
+# Test artifacts
+*.txt
+!README.txt
+test-*.json
+*-response.txt
+*-status.txt
+
+# Legacy
+client/
+
 # IDE
 .vscode/
 .idea/

@@ -10,9 +10,12 @@ class ObraController {
    * @access Private
    */
   list = asyncHandler(async (req, res) => {
-    const { page = 1, limit = 20, status, responsavel } = req.query;
-    const options = { page: parseInt(page), limit: parseInt(limit) };
-    const filters = { status, responsavel };
+    const rawPage  = parseInt(req.query.page,  10);
+    const rawLimit = parseInt(req.query.limit, 10);
+    const page  = rawPage  > 0  ? rawPage  : 1;
+    const limit = rawLimit > 0 && rawLimit <= 100 ? rawLimit : 20;
+    const options = { page, limit };
+    const filters = { status: req.query.status, responsavel: req.query.responsavel };
 
     const result = await obraService.list(filters, options, req.user.id, req.user.perfil);
     const { pagination } = paginate(page, limit, result.total);
