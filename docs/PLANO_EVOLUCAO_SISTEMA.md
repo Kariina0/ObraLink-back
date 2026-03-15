@@ -1,423 +1,84 @@
-# Plano de Evolução do Sistema — Gestão de Obras RPG
+# Plano de evolução do sistema — Construtora RPG
 
-> Documento de referência permanente para evolução técnica e funcional do sistema.
-> Última atualização: 11/03/2026
+Atualização técnica: 15/03/2026
 
----
+## 1) Diagnóstico de aderência ao problema
 
-## 1 — Visão Geral do Sistema
+### Problema original
 
-### Objetivo
+Comunicação lenta e não padronizada entre escritório e canteiro.
 
-O sistema de Gestão de Obras foi desenvolvido para a **Construtora RPG** com o objetivo de digitalizar e padronizar a comunicação entre o canteiro de obras e o escritório técnico.
+### Como o sistema responde hoje
 
-### Problema operacional
+- canal único de API para medições, diário, solicitações e arquivos
+- validação estruturada de dados de entrada
+- aprovação por supervisor/admin para medições e solicitações
+- sincronização em cenários de baixa conectividade (fila local no frontend + endpoints de sync)
 
-A construtora enfrenta atrasos recorrentes no envio de informações do canteiro para o escritório, causados por:
+### Nível de atendimento atual
 
-- Envio manual de dados por diferentes canais (WhatsApp, e-mail, papel)
-- Falta de padronização nas informações enviadas
-- Acúmulo de responsabilidades dos encarregados
-- Dificuldade dos encarregados com ferramentas digitais
-- Ausência de um canal único e estruturado de comunicação
-
-Isso resulta em atrasos no planejamento, compra de materiais fora do prazo, dificuldade de acompanhamento pelo setor técnico e risco de descumprimento contratual.
-
-### Solução
-
-O sistema oferece um canal único e padronizado onde encarregados registram medições, solicitam materiais, enviam fotos e documentos — e supervisores/administradores aprovam, acompanham e gerenciam obras em tempo real.
-
----
-
-## 2 — Arquitetura Atual do Sistema
-
-### 2.1 — Backend (Node.js / Express)
-
-**Localização:** `Projeto-backend-master/`
-
-#### Camadas
-
-```
-Routes → Controllers → Services → Repositories → Database (SQLite / Knex)
-```
-
-| Camada | Diretório | Responsabilidade |
-|---|---|---|
-| Routes | `src/routes/` | Define endpoints HTTP e aplica middlewares (auth, validação) |
-| Controllers | `src/controllers/` | Recebe requisições, delega para services, formata respostas |
-| Services | `src/services/` | Regras de negócio, validações complexas, orquestração |
-| Repositories | `src/repositories/` | Acesso ao banco de dados via Knex query builder |
-| DTOs | `src/dtos/` | Serialização de dados de saída (remove campos sensíveis) |
-| Middleware | `src/middleware/` | Autenticação JWT, autorização por perfil, tratamento de erros, validação |
-| Validators | `src/validators/` | Schemas Joi para validação de entrada |
-| Utils | `src/utils/` | Erros tipados, helpers, logger Winston, validação de tipos de arquivo |
-| Config | `src/config/` | Configuração de banco, JWT e Multer |
-| Constants | `src/constants/` | Perfis, status, tipos, mensagens, limites |
-
-#### Autenticação JWT
-
-- Access token (15 min) + Refresh token (7 dias)
-- Refresh token armazenado como hash bcrypt no banco
-- Rotação de refresh token a cada uso
-- Middleware `authenticate` verifica token em rotas protegidas
-- Middleware `authorize(...perfis)` controla acesso por perfil (admin, supervisor, encarregado)
-- Reset de senha com código numérico de 6 dígitos (TTL configurável)
-
-#### Banco de Dados
-
-- **Desenvolvimento:** SQLite via Knex query builder
-- **Produção (previsto):** PostgreSQL (configuração já presente no `knexfile.js`)
-- **Migrations:** 6 arquivos versionados em `migrations/`
-- **Tabelas principais:** `users`, `obras`, `medicoes`, `arquivos`, `solicitacoes_compra`, `diarios`, `obra_encarregados`
-- **Tabelas legadas (não utilizadas):** `measurements`, `purchases`
-
-#### Upload de Arquivos
-
-- **Multer** para recepção de arquivos
-- **StorageService** com dois provedores:
-  - `local`: salva em disco (`./uploads/`), serve como estático
-  - `supabase`: upload para bucket privado com URLs assinadas (1h)
-- Filtro de tipos MIME (JPEG, PNG, PDF por padrão)
-- Limite de 5 MB por arquivo
-- Validação de magic bytes (`fileTypeValidator`)
-- Limpeza automática de uploads falhos em modo local
-
-#### Sincronização
-
-- `SyncService` com endpoints `GET /api/sync/pull` e `POST /api/sync/push`
-- Estratégia Last-Write-Wins para resolução de conflitos
-- Suporta medições, diários, solicitações e arquivos
-- **Observação:** o frontend atualmente NÃO consome esses endpoints
-
-#### Segurança
-
-- Helmet (headers de segurança)
-- CORS configurável via `ALLOWED_ORIGINS`
-- Rate limiting global (100 req/15min)
-- Compressão gzip
-- Logger Winston com rotação de arquivos
-- Sanitização de chaves sensíveis nos logs do Supabase
-
-### 2.2 — Frontend (React)
-
-**Localização:** `frontend/`
-
-#### Estrutura
-
-```
-src/
-├── pages/          → 12 páginas (Login, Dashboard, EnviarMedicao, etc.)
-├── components/     → Layout, PrivateRoute, Icons
-├── services/       → 6 services de API (api, medicoes, obras, files, purchases, users)
-├── context/        → AuthContext (estado global de autenticação)
-├── constants/      → Permissões por rota, constantes de medição, status
-├── utils/          → IndexedDB offline, normalização, validação de senha
-└── styles/         → CSS com variáveis e media queries responsivos
-```
-
-#### AuthContext
-
-- Estado global de autenticação via React Context
-- Carrega usuário do `localStorage` ao iniciar e valida com `GET /api/auth/me`
-- Abordagem otimista: mantém sessão em erros de rede (5xx), invalida apenas em 401/403
-- Funções `login()`, `logout()` e flag `authChecked` para evitar flash de redirect
-
-#### Interceptor de API (Axios)
-
-- Injeta token JWT em todas as requisições
-- Refresh automático em 401 com fila de requisições pendentes (evita race condition)
-- Dispatch de evento `auth:logout` para forçar limpeza global
-
-#### Controle de Rotas
-
-- `ROUTE_PERMISSIONS` define perfis permitidos por rota
-- `PrivateRoute` verifica autenticação e permissão antes de renderizar
-- 3 níveis: todos os perfis, supervisor+admin, somente admin
-
-#### IndexedDB Offline (Upload de Arquivos)
-
-- Arquivos salvos como `ArrayBuffer` no IndexedDB quando offline
-- Metadados preservados (obra, tipoArquivo, descricao)
-- Sincronização automática ao reconectar
-- Retry com limite de 5 tentativas
-- TTL de 7 dias para arquivos pendentes
-- Limpeza automática de registros expirados
-
-#### Responsividade
-
-- CSS com media queries em 375px, 480px, 600px, 768px, 1024px, 1280px
-- Menu hambúrguer para mobile
-- Layouts flexíveis com grid responsivo
-
----
-
-## 3 — Principais Funcionalidades Implementadas
-
-### 3.1 — Login e Autenticação
-
-| Item | Status |
+| Objetivo | Situação atual |
 |---|---|
-| Login com e-mail e senha | ✔ Implementado |
-| JWT com refresh token | ✔ Implementado |
-| Logout com invalidação de refresh token | ✔ Implementado |
-| Troca de senha (com validação de complexidade) | ✔ Implementado |
-| Cadastro de funcionários (somente admin) | ✔ Implementado |
-| Reset de senha por código numérico | ✔ Backend pronto / ❌ Sem tela no frontend |
+| Envio ágil de medições | Atendido |
+| Envio ágil de fotos/arquivos | Atendido |
+| Diário de obra estruturado | Atendido |
+| Solicitações de compra com fluxo | Atendido |
+| Funcionamento com baixa conectividade | Atendido com limitações operacionais |
+| Segurança/LGPD | Atendido parcialmente |
 
-### 3.2 — Gestão de Obras
+## 2) Restrições e riscos identificados
 
-| Item | Status |
-|---|---|
-| Listagem de obras com filtros (nome, status) | ✔ Implementado |
-| Cadastro de nova obra (admin) | ✔ Implementado |
-| Edição de obra (admin) | ✔ Implementado |
-| Exclusão de obra (soft delete — admin) | ⚠ Parcial (não filtra deletadas nas consultas) |
-| Vinculação de encarregados a obras (N:N) | ✔ Implementado |
-| Desvinculação de encarregados | ✔ Implementado |
-| Encarregado vê apenas suas obras | ✔ Implementado |
+1. Tokens em `localStorage` no frontend (risco em cenário XSS).
+2. Exclusão lógica heterogênea (`deletedAt` em coluna e/ou metadata JSON).
+3. Exportação PDF ainda indisponível (`501`).
+4. Cobertura de testes concentrada em alguns domínios (ainda pode ampliar).
 
-### 3.3 — Envio de Medições
+## 3) Plano de evolução priorizado
 
-| Item | Status |
-|---|---|
-| Formulário estruturado (obra, área, tipo de serviço, dimensões) | ✔ Implementado |
-| Cálculo automático de área (C × L) e volume (C × L × A) | ✔ Implementado |
-| Upload de foto associada à medição | ✔ Implementado |
-| Listagem de medições com filtros avançados (obra, status, tipo, período, responsável) | ✔ Implementado |
-| Paginação server-side | ✔ Implementado |
-| Aprovação/rejeição por supervisor com motivo | ✔ Implementado |
-| Tela "Meus Relatórios" com detalhes expandíveis | ✔ Implementado |
+### Fase A — Estabilidade e segurança (curto prazo)
 
-### 3.4 — Solicitação de Compras
+- Migrar sessão web para cookies `httpOnly` com refresh seguro.
+- Padronizar estratégia de soft delete por entidade crítica.
+- Consolidar tratamento de conflitos de sincronização com indicadores operacionais.
 
-| Item | Status |
-|---|---|
-| Catálogo de 200+ materiais em 10 categorias | ✔ Implementado |
-| Seleção por checkbox (sem digitação livre) | ✔ Implementado |
-| Prioridade (baixa, média, alta, urgente) | ✔ Implementado |
-| Listagem com status e paginação | ✔ Implementado |
-| Aprovação/rejeição por supervisor com motivo | ✔ Implementado |
+### Fase B — Produtividade do escritório (médio prazo)
 
-### 3.5 — Upload de Arquivos
+- Implementar exportação PDF do boletim de medições.
+- Publicar especificação OpenAPI da API.
+- Incluir dashboard de integridade de sync (pendências/erros por obra).
 
-| Item | Status |
-|---|---|
-| Upload com tipagem obrigatória (foto_obra, medição, relatório, problema, etc.) | ✔ Implementado |
-| Vinculação obrigatória a uma obra | ✔ Implementado |
-| Descrição obrigatória (mín. 3 caracteres) | ✔ Implementado |
-| Campo condicional "detalhe do problema" | ✔ Implementado |
-| Modo offline com IndexedDB | ✔ Implementado |
-| Sincronização automática ao reconectar | ✔ Implementado |
-| Retry com limite (5 tentativas) e TTL (7 dias) | ✔ Implementado |
+### Fase C — Governança e escala (médio/longo prazo)
 
-### 3.6 — Gestão de Usuários
+- Expandir testes automatizados para mais fluxos de negócio.
+- Definir política formal de retenção/anonimização LGPD.
+- Evoluir pipeline CI para bloquear merge sem lint/testes.
 
-| Item | Status |
-|---|---|
-| Cadastro de funcionários (somente admin) | ✔ Implementado |
-| Listagem de usuários (admin/supervisor) | ✔ Implementado |
-| Perfil do usuário com dados da conta | ✔ Implementado |
-| Troca de senha pelo próprio usuário | ✔ Implementado |
+## 4) Critérios de sucesso por fase
 
-### 3.7 — Painel Administrativo
+### Fase A
 
-| Item | Status |
-|---|---|
-| Estatísticas via COUNT SQL (total obras, medições, solicitações, arquivos) | ✔ Implementado |
-| Indicadores de itens pendentes | ✔ Implementado |
-| Links rápidos para gerenciamento | ✔ Implementado |
+- 0 uso de token em `localStorage`.
+- 100% das consultas principais sem inconsistência de soft delete.
 
-### 3.8 — Diário de Obra (RDO)
+### Fase B
 
-| Item | Status |
-|---|---|
-| Tabela `diarios` no banco de dados | ✔ Schema existe |
-| `DiarioRepository` com CRUD | ✔ Backend existe |
-| Controller / Rotas de API | ❌ Não implementado |
-| Tela no frontend | ❌ Não implementado |
+- PDF export disponível para uso de operação.
+- API documentada e consumível por terceiros sem reverse engineering.
 
----
+### Fase C
 
-## 4 — Problemas Identificados na Análise Técnica
+- aumento mensurável da cobertura de testes.
+- checklist LGPD operacional adotado pelo time.
 
-### 4.1 — Problemas de Integração
+## 5) Diretriz de execução
 
-| # | Problema | Impacto | Arquivos |
-|---|---------|---------|----------|
-| P-01 | Porta da API divergente: `.env` do frontend define `5000`, backend usa `5001` | Falha de conexão front→back | `frontend/.env`, `src/server.js` |
-| P-02 | README do frontend menciona MongoDB; banco real é SQLite/Knex | Confusão para novos desenvolvedores | `frontend/README.md` |
-| P-03 | Service `listMedicoesByObra()` existe no frontend mas não é chamado em nenhuma tela | Código morto | `frontend/src/services/medicoesService.js` |
+Todas as evoluções devem manter os princípios do projeto:
 
-### 4.2 — Problemas de Backend
-
-| # | Problema | Impacto | Arquivos |
-|---|---------|---------|----------|
-| P-04 | Soft delete de obras não filtra registros excluídos nas consultas | Obras deletadas podem aparecer nas listagens | `src/services/ObraService.js`, `src/repositories/ObraRepository.js` |
-| P-05 | Tabelas legadas `measurements` e `purchases` existem no schema mas não são usadas | Confusão, ocupam espaço no schema | `migrations/20260224_initial_schema.js` |
-| P-06 | SQLite como banco de dados — não suporta alta concorrência | Timeouts com múltiplos usuários simultâneos | `knexfile.js`, `src/config/database.js` |
-| P-07 | Rate limiting global (100 req/15min) sem proteção específica para login | Vulnerável a brute force no endpoint de autenticação | `src/app.js` |
-| P-08 | Uploads locais servidos como estático sem autenticação em produção | Arquivos acessíveis publicamente sem token | `src/app.js` |
-| P-09 | Tokens JWT armazenados no localStorage | Vulnerável a XSS | `frontend/src/context/AuthContext.js`, `frontend/src/services/api.js` |
-
-### 4.3 — Problemas de Frontend
-
-| # | Problema | Impacto | Arquivos |
-|---|---------|---------|----------|
-| P-10 | Sem PWA real (service worker ausente) | App não instala no celular, sem cache offline de recursos | `frontend/public/manifest.json` |
-| P-11 | `manifest.json` com textos genéricos ("Create React App Sample") | Identidade visual incompleta no mobile | `frontend/public/manifest.json`, `frontend/public/index.html` |
-| P-12 | Inline styles extensivos nas páginas | Dificulta manutenção e consistência visual | `frontend/src/pages/*.jsx` |
-| P-13 | Sem testes automatizados no frontend | Regressões difíceis de detectar | `frontend/src/` |
-
-### 4.4 — Funcionalidades Ausentes
-
-| # | Problema | Impacto |
-|---|---------|---------|
-| P-14 | Diário de obra (RDO) sem implementação no frontend | Funcionalidade crítica para acompanhamento diário ausente |
-| P-15 | Sincronização offline funciona apenas para uploads; medições e solicitações exigem conexão | Encarregados em áreas sem internet não conseguem registrar medições |
-| P-16 | Sem sistema de notificações (push, e-mail ou in-app) | Atrasos no envio de informações não são detectados proativamente |
-| P-17 | Sem exportação de relatórios (PDF/Excel) | Escritório não gera documentos para contratantes |
-| P-18 | Tela de reset de senha não existe no frontend | Backend pronto mas funcionalidade inacessível |
-| P-19 | Sem termos de uso ou aviso de privacidade (LGPD) | Risco de não conformidade legal |
-
----
-
-## 5 — Plano de Evolução do Sistema
-
-### 5.1 — CORREÇÕES CRÍTICAS
-
-Problemas que precisam ser resolvidos primeiro para garantir o funcionamento correto do sistema.
-
-#### CC-01: Corrigir divergência de porta da API
-- **Problema:** P-01
-- **Ação:** Alinhar `frontend/.env` com a porta real do backend (`5001`) ou configurar ambos para a mesma porta
-- **Arquivos:** `frontend/.env`
-- **Complexidade:** Baixa
-
-#### CC-02: Proteger uploads em produção
-- **Problema:** P-08
-- **Ação:** Implementar middleware de autenticação obrigatória para servir arquivos em modo local, ou documentar que `STORAGE_PROVIDER=supabase` é obrigatório em produção
-- **Arquivos:** `src/app.js`
-- **Complexidade:** Média
-
-#### CC-03: Corrigir soft delete de obras
-- **Problema:** P-04
-- **Ação:** Filtrar obras com `metadata.deletedAt` nas consultas de listagem, ou implementar campo `deletedAt` como coluna real
-- **Arquivos:** `src/repositories/ObraRepository.js`, `src/services/ObraService.js`
-- **Complexidade:** Média
-
-#### CC-04: Adicionar rate limiting específico para login
-- **Problema:** P-07
-- **Ação:** Configurar rate limiter dedicado no endpoint `POST /api/auth/login` (máx. 5 tentativas/minuto por IP)
-- **Arquivos:** `src/routes/auth.js`, `src/app.js`
-- **Complexidade:** Baixa
-
-#### CC-05: Atualizar manifest.json e index.html com identidade do sistema
-- **Problema:** P-11
-- **Ação:** Substituir textos genéricos por "Gestão de Obras RPG", adicionar descrição, cores da marca
-- **Arquivos:** `frontend/public/manifest.json`, `frontend/public/index.html`
-- **Complexidade:** Baixa
-
-### 5.2 — MELHORIAS ESTRUTURAIS
-
-Melhorias de arquitetura, segurança e qualidade técnica.
-
-#### ME-01: Implementar PWA com Service Worker
-- **Problema:** P-10
-- **Ação:** Configurar service worker para cache de assets, manifest correto, instalação na tela inicial do celular
-- **Arquivos:** `frontend/public/`, `frontend/src/index.js`
-- **Complexidade:** Alta
-
-#### ME-02: Migrar para PostgreSQL em produção
-- **Problema:** P-06
-- **Ação:** Configurar variáveis de ambiente para PostgreSQL, testar migrations, documentar processo
-- **Arquivos:** `knexfile.js`, `.env`
-- **Complexidade:** Média
-
-#### ME-03: Implementar sincronização offline completa
-- **Problema:** P-15
-- **Ação:** Estender IndexedDB no frontend para medições e solicitações; consumir endpoints `GET /api/sync/pull` e `POST /api/sync/push`
-- **Arquivos:** `frontend/src/utils/db.js`, `frontend/src/services/` (novo syncService), `frontend/src/pages/EnviarMedicao.jsx`, `frontend/src/pages/PurchaseRequest.jsx`
-- **Complexidade:** Alta
-
-#### ME-04: Migrar tokens JWT para httpOnly cookies
-- **Problema:** P-09
-- **Ação:** Backend envia tokens via `Set-Cookie` com flags `httpOnly`, `Secure`, `SameSite=Strict`; frontend remove localStorage de tokens
-- **Arquivos:** `src/config/jwt.js`, `src/routes/auth.js`, `src/middleware/auth.js`, `frontend/src/services/api.js`, `frontend/src/context/AuthContext.js`
-- **Complexidade:** Alta
-
-#### ME-05: Refatorar inline styles para classes CSS
-- **Problema:** P-12
-- **Ação:** Extrair `style={{...}}` mais frequentes para classes em `pages.css`/`main.css`
-- **Arquivos:** `frontend/src/pages/*.jsx`, `frontend/src/styles/pages.css`
-- **Complexidade:** Média
-
-#### ME-06: Adicionar testes automatizados no frontend
-- **Problema:** P-13
-- **Ação:** Testes unitários para services e utils; testes de integração para fluxos principais (login, medição, solicitação)
-- **Arquivos:** `frontend/src/__tests__/` (novo)
-- **Complexidade:** Alta
-
-#### ME-07: Remover tabelas e código legado
-- **Problema:** P-05, P-03
-- **Ação:** Remover tabelas `measurements` e `purchases` via nova migration; remover `listMedicoesByObra` se não for utilizado
-- **Arquivos:** `migrations/` (nova), `frontend/src/services/medicoesService.js`
-- **Complexidade:** Baixa
-
-#### ME-08: Atualizar README do frontend
-- **Problema:** P-02
-- **Ação:** Corrigir referência de MongoDB para SQLite/Knex; documentar setup correto
-- **Arquivos:** `frontend/README.md`
-- **Complexidade:** Baixa
-
-### 5.3 — EVOLUÇÃO FUNCIONAL
-
-Novas funcionalidades que ampliam o valor da solução.
-
-#### EF-01: Implementar Diário de Obra (RDO)
-- **Problema:** P-14
-- **Ação:** Criar rotas no backend (`src/routes/diarios.js`), controller, e tela no frontend com formulário para: data, clima, atividades realizadas, mão de obra presente, equipamentos utilizados, materiais consumidos, ocorrências, fotos do dia, observações gerais
-- **Arquivos:** `src/routes/diarios.js` (novo), `src/controllers/DiarioController.js` (novo), `src/services/DiarioService.js` (novo), `frontend/src/pages/DiarioObra.jsx` (novo), `frontend/src/services/diariosService.js` (novo)
-- **Complexidade:** Alta
-- **Prioridade:** Máxima — RDO é documento obrigatório no dia a dia de canteiro
-
-#### EF-02: Implementar sistema de notificações
-- **Problema:** P-16
-- **Ação:** Notificações in-app (badge no menu) e opcionalmente por e-mail para: medições pendentes de aprovação, solicitações aprovadas/rejeitadas, medições não enviadas após X dias
-- **Arquivos:** `src/services/NotificacaoService.js` (novo), `src/routes/notificacoes.js` (novo), `frontend/src/components/NotificationBadge.jsx` (novo)
-- **Complexidade:** Alta
-
-#### EF-03: Implementar exportação de relatórios (PDF)
-- **Problema:** P-17
-- **Ação:** Endpoint que gera PDF com medições filtradas (usando biblioteca como `pdfkit` ou `puppeteer`); botão "Exportar PDF" nas telas de relatórios
-- **Arquivos:** `src/services/RelatorioService.js` (novo), `src/routes/relatorios.js` (novo), `frontend/src/pages/MeusRelatorios.jsx`, `frontend/src/pages/measurements.jsx`
-- **Complexidade:** Média
-
-#### EF-04: Implementar tela de reset de senha
-- **Problema:** P-18
-- **Ação:** Tela no frontend com fluxo: informar e-mail → receber código → digitar código + nova senha
-- **Arquivos:** `frontend/src/pages/ResetSenha.jsx` (novo), `frontend/src/App.jsx`
-- **Complexidade:** Baixa
-
-#### EF-05: Adicionar conformidade LGPD
-- **Problema:** P-19
-- **Ação:** Tela de termos de uso e política de privacidade; checkbox de aceite no cadastro; endpoint para solicitar exclusão de dados pessoais
-- **Arquivos:** `frontend/src/pages/TermosUso.jsx` (novo), `frontend/src/pages/Register.jsx`, `src/routes/auth.js`
-- **Complexidade:** Média
-
-#### EF-06: Dashboard visual com gráficos
-- **Ação:** Gráficos de medições por período, solicitações por status, progresso por obra (usando `recharts` ou `chart.js`)
-- **Arquivos:** `frontend/src/pages/AdminPanel.jsx`, `frontend/src/pages/Dashboard.jsx`
-- **Complexidade:** Média
-
-#### EF-07: Modo câmera direta e geolocalização
-- **Ação:** Botão que abre câmera do celular diretamente; captura automática de coordenadas GPS ao registrar medição ou foto (o schema já tem campo `coordenadas`)
-- **Arquivos:** `frontend/src/pages/EnviarMedicao.jsx`, `frontend/src/pages/Upload.jsx`
-- **Complexidade:** Média
-
-#### EF-08: Fluxo completo de compras (cotação → entrega)
-- **Ação:** Estender solicitação de compra com etapas: cotação, pedido, entrega, conferência de quantidade
-- **Arquivos:** `src/repositories/SolicitacaoCompraRepository.js`, `frontend/src/pages/StatusSolicitacao.jsx`
-- **Complexidade:** Alta
+- facilidade de uso para perfis de baixa maturidade digital
+- operação em conectividade instável
+- sem dependência de novos equipamentos
+- integração com rotina real de obra
+- segurança da informação e LGPD
 
 ---
 

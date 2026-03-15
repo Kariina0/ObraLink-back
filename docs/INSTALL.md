@@ -1,287 +1,101 @@
-## 📋 Pré-requisitos
+# Instalação e execução
 
-Antes de começar, certifique-se de ter instalado:
+## Pré-requisitos
 
-- **Node.js v18+** ([Download](https://nodejs.org/))
-- **npm** (incluído com Node.js) ou **yarn**
-- **Git** (opcional, para clonar o repositório)
-- **4GB RAM** mínimo
-- **500MB** de espaço em disco
+- Node.js `>=18`
+- npm
 
-Observação: o projeto suporta dois modos de persistência: SQLite (recomendado para desenvolvimento) e MongoDB (opcional).
-# 🚀 Guia Rápido de Instalação
+## Backend (`Projeto-backend-master`)
 
-## 📋 Pré-requisitos
-
-Antes de começar, certifique-se de ter instalado:
-
-- **Node.js v18+** ([Download](https://nodejs.org/))
-- **MongoDB 7.0+** ([Download](https://www.mongodb.com/try/download/community))
-- **npm** (incluído com Node.js) ou **yarn**
-- **Git** (opcional, para clonar o repositório)
-- **4GB RAM** mínimo
-- **500MB** de espaço em disco
-
-## Instalação Rápida
-
-### 1. Instalar dependências
+### 1) Instalar dependências
 
 ```bash
 npm install
 ```
 
-### 2. Configurar ambiente
+### 2) Configurar ambiente
 
-O arquivo `.env` já está configurado para desenvolvimento. Se precisar ajustar:
+Crie/ajuste o arquivo `.env` com, no mínimo:
 
-```bash
-# Edite o arquivo .env com suas configurações
+```env
+NODE_ENV=development
+PORT=5000
+
+JWT_SECRET=defina_um_segredo_forte
+JWT_REFRESH_SECRET=defina_outro_segredo_forte
+
+ALLOWED_ORIGINS=http://localhost:3000
+
+STORAGE_PROVIDER=local
+UPLOAD_PATH=./uploads
+MAX_FILE_SIZE=5242880
+ALLOWED_FILE_TYPES=image/jpeg,image/png,image/jpg,application/pdf
+IMAGE_COMPRESSION_QUALITY=80
 ```
-### 3. Banco de dados e migrações
 
-Por padrão local o projeto usa SQLite via Knex. Para preparar o banco e popular dados de exemplo:
+Se usar Supabase para arquivos:
+
+```env
+STORAGE_PROVIDER=supabase
+SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
+SUPABASE_STORAGE_BUCKET=obras-arquivos
+```
+
+### 3) Rodar migrations
 
 ```bash
-# Defina o cliente e rode migrações (Linux/Mac)
-export DB_CLIENT=sqlite
 npm run migrate
-npm run seed:sqlite
-
-# Windows PowerShell
-$env:DB_CLIENT="sqlite"
-npm run migrate
-npm run seed:sqlite
 ```
 
-Se preferir usar MongoDB, configure a variável `DB_CLIENT=mongodb` e `MONGODB_URI` no `.env`.
-
-```bash
-# Exemplo (Linux/Mac)
-export DB_CLIENT=mongodb
-export MONGODB_URI='mongodb://localhost:27017/construcao_db'
-
-# Windows PowerShell
-$env:DB_CLIENT="mongodb"
-$env:MONGODB_URI="mongodb://localhost:27017/construcao_db"
-```
-### 3. Iniciar MongoDB
-**Windows:**
-
-
-### 4. Popular banco de dados (opcional)
-
-Para SQLite:
+### 4) Popular dados de exemplo (opcional)
 
 ```bash
 npm run seed:sqlite
 ```
 
-Para MongoDB (se estiver usando):
-
-```bash
-npm run seed
-```
-
-Os scripts de seed criam dados de exemplo (usuarios, obras, etc.). As credenciais padrão de teste podem variar conforme o seed atual.
-sudo service mongodb start
-```
-
-**Docker (alternativa):**
-
-```bash
-docker run -d -p 27017:27017 --name mongodb mongo:latest
-```
-
-### 4. Popular banco de dados (opcional)
-
-```bash
-npm run seed
-```
-
-Isso criará:
-
-- 4 usuários de teste (admin, supervisor, 2 encarregados)
-- 3 obras de exemplo
-
-**Credenciais criadas:**
-
-- Admin: `admin@construcao.com` / `admin123`
-- Supervisor: `supervisor@construcao.com` / `supervisor123`
-- Encarregado 1: `joao@construcao.com` / `encarregado123`
-- Encarregado 2: `pedro@construcao.com` / `encarregado123`
-
-### 5. Iniciar servidor
-
-**Desenvolvimento (com auto-reload):**
+### 5) Subir API
 
 ```bash
 npm run dev
 ```
 
-**Produção:**
+API: `http://localhost:5000/api`
+
+## Frontend (opcional, pasta irmã `../frontend`)
 
 ```bash
+cd ..\frontend
+npm install
 npm start
 ```
 
-Servidor rodará em: `http://localhost:5000`
+Defina `REACT_APP_API_URL` no frontend para apontar para o backend.
 
-## ✅ Verificar Instalação
+Exemplo:
 
-### Teste 1: Health Check
+```env
+REACT_APP_API_URL=http://localhost:5000/api
+```
 
-Abra o navegador ou use curl:
+## Verificação rápida
+
+### Health check
 
 ```bash
 curl http://localhost:5000/api/health
 ```
 
-Resposta esperada:
-
-```json
-{
-  "status": "ok",
-  "timestamp": "2024-01-15T10:00:00Z",
-  "uptime": 123,
-  "environment": "development"
-}
-```
-
-### Teste 2: Login
+### Login
 
 ```bash
-curl -X POST http://localhost:5000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "admin@construcao.com",
-    "senha": "admin123"
-  }'
+curl -X POST http://localhost:5000/api/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@construcao.com\",\"senha\":\"admin123\"}"
 ```
 
-## 📁 Estrutura de Diretórios
-
-Após a instalação, a estrutura será:
-
-```
-backend/
-├── logs/                # Logs da aplicação
-├── node_modules/        # Dependências
-├── scripts/            # Scripts utilitários
-├── src/                # Código fonte
-│   ├── config/         # Configurações
-│   ├── constants/      # Constantes
-│   ├── controllers/    # Controllers
-│   ├── dtos/          # DTOs
-│   ├── middleware/    # Middlewares
-│   ├── models/        # Models Mongoose
-│   ├── repositories/  # Repositórios
-│   ├── routes/        # Rotas
-│   ├── services/      # Serviços
-│   ├── utils/         # Utilitários
-│   ├── validators/    # Validadores
-│   ├── app.js         # App Express
-│   └── server.js      # Servidor
-├── uploads/           # Arquivos enviados
-├── .env              # Variáveis de ambiente
-├── .env.example      # Exemplo de variáveis
-├── .gitignore        # Git ignore
-├── api-examples.http # Exemplos de requisições
-├── package.json      # Dependências e scripts
-└── README.md         # Documentação completa
-```
-
-## 🧪 Testando a API
-
-### Opção 1: VS Code REST Client
-
-1. Instale a extensão "REST Client" no VS Code
-2. Abra o arquivo `api-examples.http`
-3. Clique em "Send Request" acima de cada requisição
-
-### Opção 2: Postman/Insomnia
-
-1. Importe as requisições do arquivo `api-examples.http`
-2. Configure a variável `baseUrl`: `http://localhost:5000/api`
-3. Execute as requisições
-
-### Opção 3: cURL (linha de comando)
-
-Veja exemplos no arquivo `api-examples.http`
-
-## ❌ Troubleshooting
-
-### Erro: "Cannot connect to MongoDB"
-
-**Solução:**
+## Testes
 
 ```bash
-# Verifique se MongoDB está rodando
-# Windows
-net start MongoDB
-
-# Linux/Mac
-sudo systemctl status mongodb
+npm test -- --runInBand
 ```
 
-### Erro: "Port 5000 already in use"
-
-**Solução:**
-
-```bash
-# Altere a porta no arquivo .env
-PORT=3000
-```
-
-### Erro: "Cannot find module"
-
-**Solução:**
-
-```bash
-# Reinstale as dependências
-rm -rf node_modules
-npm install
-```
-
-### Erro ao fazer upload de arquivos
-
-**Solução:**
-
-```bash
-# Crie o diretório de uploads manualmente
-mkdir uploads
-```
-
-### Logs não estão sendo salvos
-
-**Solução:**
-
-```bash
-# Crie o diretório de logs
-mkdir logs
-```
-
-## 📝 Próximos Passos
-
-1. ✅ Servidor rodando
-2. 📖 Leia o [README.md](README.md) completo
-3. 🧪 Teste os endpoints usando `api-examples.http`
-4. 🔐 Configure suas próprias credenciais em produção
-5. 🚀 Desenvolva o frontend que consumirá esta API
-
-## 🆘 Precisa de Ajuda?
-
-- Documentação completa: [README.md](README.md)
-- Exemplos de API: [api-examples.http](api-examples.http)
-- Logs: `logs/combined.log` e `logs/error.log`
-
-## 🎉 Pronto!
-
-Seu backend está rodando! Acesse:
-
-- API: http://localhost:5000
-- Health Check: http://localhost:5000/api/health
-- Documentação: http://localhost:5000 (redireciona para health)
-
----
-
-**Desenvolvido para o SENAI - Projeto Sistema de Construção Civil**
+Estado validado em 15/03/2026: `7` suítes, `98` testes passando.
