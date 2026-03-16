@@ -46,7 +46,7 @@ class MedicaoService {
       }
     }
 
-    // Serializar arrays JSON para SQLite
+    // Serializar arrays como JSON string (coluna TEXT no PostgreSQL)
     if (medicaoData.itens) {
       medicaoData.itens = JSON.stringify(medicaoData.itens);
     }
@@ -103,7 +103,7 @@ class MedicaoService {
         : null;
     }
 
-    // Serializar arrays JSON para SQLite
+    // Serializar arrays como JSON string (coluna TEXT no PostgreSQL)
     if (medicaoData.itens) {
       medicaoData.itens = JSON.stringify(medicaoData.itens);
     }

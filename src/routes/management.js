@@ -86,7 +86,7 @@ router.get(
 
     const realizadoPorObra = {};
     for (const row of medicoesValorRaw) {
-      let itens = [];
+      let itens;
       try { itens = row.itens ? JSON.parse(row.itens) : []; } catch { itens = []; }
       const soma = Array.isArray(itens)
         ? itens.reduce((acc, item) => acc + (Number(item.valorTotal) || 0), 0)
@@ -235,7 +235,7 @@ router.get(
         .where("status", "aprovada");
 
       for (const row of medicoesValorRaw) {
-        let itens = [];
+        let itens;
         try { itens = row.itens ? JSON.parse(row.itens) : []; } catch { itens = []; }
         const soma = Array.isArray(itens)
           ? itens.reduce((acc, item) => acc + (Number(item.valorTotal) || 0), 0)
@@ -359,7 +359,7 @@ router.get(
     const medicoes = await qb;
 
     const rows = medicoes.map((m) => {
-      let valorTotal = 0;
+      let valorTotal;
       try {
         const itens = m.itens ? JSON.parse(m.itens) : [];
         valorTotal = Array.isArray(itens)

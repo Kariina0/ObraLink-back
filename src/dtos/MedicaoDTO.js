@@ -17,7 +17,7 @@ class MedicaoDTO {
     this.areaCalculada = MedicaoDTO._toNumber(medicao.areaCalculada);
     this.volume        = MedicaoDTO._toNumber(medicao.volume);
 
-    // SQLite armazena JSON como string — parsear se necessário
+    // PostgreSQL armazena JSON como TEXT — parsear se necessário
     this.periodo = MedicaoDTO._parseJson(medicao.periodo);
     this.itens    = MedicaoDTO._parseJson(medicao.itens, []);
     this.anexos   = MedicaoDTO._parseJson(medicao.anexos, []);
@@ -33,7 +33,8 @@ class MedicaoDTO {
     const meta = MedicaoDTO._parseJson(medicao.metadata, {});
     this.createdAt = medicao.created_at || meta.createdAt;
     this.updatedAt = medicao.updated_at || meta.updatedAt;
-    this.motivoRejeicao = meta.motivoRejeicao || null;
+    // Lê da coluna dedicada primeiro; cai no metadata para registros anteriores à migration
+    this.motivoRejeicao = medicao.motivoRejeicao || meta.motivoRejeicao || null;
 
     // Calcular total somente quando itens é um array
     this.valorTotal = Array.isArray(this.itens)

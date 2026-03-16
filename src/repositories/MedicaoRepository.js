@@ -48,7 +48,7 @@ class MedicaoRepository extends BaseRepository {
       .leftJoin("obras", "medicoes.obra", "obras.id")
       // JOIN opcional com users para obter o nome do responsável
       .leftJoin("users", "medicoes.responsavel", "users.id")
-      .whereRaw("(medicoes.metadata IS NULL OR (medicoes.metadata::jsonb)->>'deletedAt' IS NULL)");
+      .whereRaw(this._notDeletedCondition("medicoes"));
 
     if (filters.obra) qb = qb.andWhere("medicoes.obra", Number(filters.obra));
     if (filters.responsavel) qb = qb.andWhere("medicoes.responsavel", Number(filters.responsavel));
@@ -95,8 +95,7 @@ class MedicaoRepository extends BaseRepository {
       update.dataAprovacao = new Date();
     }
     if (status === "rejeitada" && motivoRejeicao) {
-      // Salva o motivo na metadata para não requerer nova coluna (BaseRepository faz merge)
-      update.metadata = { motivoRejeicao };
+      update.motivoRejeicao = motivoRejeicao;
     }
     return await this.update(medicaoId, update);
   }
@@ -109,7 +108,7 @@ class MedicaoRepository extends BaseRepository {
     // Load medicoes aprovadas for obra and sum items on application side
     const rows = await this.knex("medicoes")
       .where({ obra: obraId, status: "aprovada" })
-      .andWhereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)");
+      .andWhereRaw(this._notDeletedCondition());
     let total = 0;
     for (const r of rows) {
       try {

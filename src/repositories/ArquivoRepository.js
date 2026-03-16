@@ -34,7 +34,11 @@ class ArquivoRepository extends BaseRepository {
   async deleteWithFile(id) {
     const arquivo = await this.findById(id);
 
-    // Excluir arquivo físico
+    // Soft delete no banco PRIMEIRO — se falhar aqui, nada é perdido
+    const result = await this.delete(id);
+
+    // Remover arquivo físico APÓS confirmação do banco
+    // Falha aqui é tolerável: registro já está marcado como deletado
     try {
       if (arquivo && arquivo.caminho) await fs.unlink(arquivo.caminho);
     } catch (error) {
@@ -42,8 +46,7 @@ class ArquivoRepository extends BaseRepository {
       logger.error("Erro ao excluir arquivo físico:", error);
     }
 
-    // Excluir do banco (soft delete)
-    return await this.delete(id);
+    return result;
   }
 
   async deleteMultipleWithFiles(ids) {

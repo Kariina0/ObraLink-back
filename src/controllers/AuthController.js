@@ -1,7 +1,7 @@
 const authService = require("../services/AuthService");
 const userRepository = require("../repositories/UserRepository");
 const UserDTO = require("../dtos/UserDTO");
-const { successResponse } = require("../utils/helpers");
+const { successResponse, paginate } = require("../utils/helpers");
 const { asyncHandler } = require("../middleware/errorHandler");
 
 class AuthController {
@@ -149,13 +149,8 @@ class AuthController {
 
     // Remove campos sensíveis antes de retornar
     const users = result.data.map((u) => new UserDTO(u));
-    res.json(successResponse(users, "Usuários listados", {
-      pagination: {
-        currentPage: safePage,
-        itemsPerPage: safeLimit,
-        totalItems: result.total,
-      },
-    }));
+    const { pagination } = paginate(safePage, safeLimit, result.total);
+    res.json(successResponse(users, "Usuários listados", pagination));
   });
 }
 

@@ -77,7 +77,7 @@ router.get("/raw/:tipo/:filename", async (req, res, next) => {
 
     // Proteção contra path traversal: permite apenas caracteres seguros em cada segmento.
     // Rejeita "../", "%2F", null bytes e qualquer variante de escape.
-    const SAFE_SEGMENT = /^[\w.\-]+$/;
+    const SAFE_SEGMENT = /^[\w.-]+$/;
     if (!SAFE_SEGMENT.test(tipo) || !SAFE_SEGMENT.test(filename)) {
       return res.status(400).json({ error: "Caminho de arquivo inválido" });
     }

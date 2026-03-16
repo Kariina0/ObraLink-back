@@ -179,7 +179,7 @@ class ObraRepository extends BaseRepository {
 
   async addMembroEquipe(obraId, userId, funcao) {
     const obra = await this.findById(obraId);
-    let equipe = [];
+    let equipe;
     try {
       equipe = obra.equipe ? JSON.parse(obra.equipe) : [];
     } catch (err) {
@@ -197,7 +197,7 @@ class ObraRepository extends BaseRepository {
 
   async removeMembroEquipe(obraId, userId) {
     const obra = await this.findById(obraId);
-    let equipe = [];
+    let equipe;
     try {
       equipe = obra.equipe ? JSON.parse(obra.equipe) : [];
     } catch (err) {
@@ -215,7 +215,7 @@ class ObraRepository extends BaseRepository {
 
   async updateOrcamento(obraId, valorGasto) {
     const obra = await this.findById(obraId);
-    let orcamento = {};
+    let orcamento;
     try {
       orcamento = obra.orcamento ? JSON.parse(obra.orcamento) : {};
     } catch (err) {

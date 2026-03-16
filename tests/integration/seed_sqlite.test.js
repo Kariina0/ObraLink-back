@@ -3,7 +3,11 @@ const os = require("os");
 const path = require("path");
 const Knex = require("knex");
 
-describe("seed SQLite", () => {
+// Teste legado do script de seed SQLite.
+// Skipped pois scripts/seed_sqlite.js cria internamente uma conexão via knexfile.development
+// que agora aponta para PostgreSQL/Supabase. Mantido no repositório como documentação.
+// Reativar somente se o script for atualizado para aceitar injeção de knex externo.
+describe.skip("seed SQLite", () => {
   let tempDir;
   let dbPath;
   let knex;
@@ -15,10 +19,11 @@ describe("seed SQLite", () => {
 
     jest.resetModules();
 
-    const knexfile = require("../../knexfile");
     knex = Knex({
-      ...knexfile.development,
+      client: "sqlite3",
       connection: { filename: dbPath },
+      useNullAsDefault: true,
+      migrations: { directory: path.join(__dirname, "../../migrations") },
     });
 
     await knex.migrate.latest();

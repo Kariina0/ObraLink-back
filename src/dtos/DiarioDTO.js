@@ -8,7 +8,7 @@ class DiarioDTO {
     this.data = diario.data;
     this.clima = diario.clima || null;
 
-    // Campos armazenados como JSON no SQLite — deserializar se necessário
+    // Campos armazenados como TEXT/JSON no PostgreSQL — deserializar se necessário
     this.atividades      = DiarioDTO._parseJson(diario.atividades, []);
     this.equipamentos    = DiarioDTO._parseJson(diario.equipamentos, []);
     this.maoDeObra       = DiarioDTO._parseJson(diario.maoDeObra, []);

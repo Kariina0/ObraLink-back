@@ -47,6 +47,24 @@ class BaseRepository {
     }
   }
 
+  _isSqlite() {
+    try {
+      const client = this.knex.client.config.client;
+      return client === "sqlite3" || client === "better-sqlite3";
+    } catch {
+      return false;
+    }
+  }
+
+  /** Returns a raw SQL fragment for filtering out soft-deleted rows via metadata JSON. */
+  _notDeletedCondition(tablePrefix = null) {
+    const col = tablePrefix ? `${tablePrefix}.metadata` : "metadata";
+    if (this._isSqlite()) {
+      return `(${col} IS NULL OR json_extract(${col}, '$.deletedAt') IS NULL)`;
+    }
+    return `(${col} IS NULL OR (${col}::jsonb)->>'deletedAt' IS NULL)`;
+  }
+
   _applyNotDeleted(queryBuilder) {
     // Prefer explicit metadata_deletedAt column if present
     return (async () => {
@@ -57,7 +75,11 @@ class BaseRepository {
         return queryBuilder.whereNull(`${this.table}.metadata_deletedAt`);
       }
 
-      // Fallback: PostgreSQL JSONB — cast text column to jsonb and check deletedAt key
+      // Fallback: use client-appropriate JSON syntax
+      if (this._isSqlite()) {
+        return queryBuilder.whereRaw("(metadata IS NULL OR json_extract(metadata, '$.deletedAt') IS NULL)");
+      }
+      // PostgreSQL JSONB
       return queryBuilder.whereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)");
     })();
   }
@@ -111,10 +133,14 @@ class BaseRepository {
         // support json fields like 'metadata.createdAt'
         if (parsed.key && parsed.key.includes(".")) {
           const parts = parsed.key.split(".");
-          // special-case metadata.* to use PostgreSQL JSONB operator
+          // special-case metadata.* with client-appropriate JSON operator
           if (parts[0] === "metadata") {
             const jsonKey = parts.slice(1).join(".");
-            qb.orderByRaw(`(metadata::jsonb)->>'${jsonKey}' ${parsed.dir}`);
+            if (this._isSqlite()) {
+              qb.orderByRaw(`json_extract(metadata, '$.${jsonKey}') ${parsed.dir}`);
+            } else {
+              qb.orderByRaw(`(metadata::jsonb)->>'${jsonKey}' ${parsed.dir}`);
+            }
           } else {
             // fallback to raw ordering for other dotted keys
             qb.orderByRaw(`${parsed.key} ${parsed.dir}`);
@@ -211,7 +237,7 @@ class BaseRepository {
 
       const hasMetadata = await this._hasMetadataColumn();
       if (hasMetadata) {
-        let metadata = {};
+        let metadata;
         try {
           metadata = existing.metadata ? JSON.parse(existing.metadata) : {};
         } catch (err) {

@@ -66,7 +66,7 @@ class DiarioRepository extends BaseRepository {
 
   async addOcorrencia(diarioId, ocorrencia) {
     const diario = await this.findById(diarioId);
-    let ocorrencias = [];
+    let ocorrencias;
     try {
       ocorrencias = diario.ocorrencias ? JSON.parse(diario.ocorrencias) : [];
     } catch (err) {
@@ -79,7 +79,7 @@ class DiarioRepository extends BaseRepository {
 
   async addVisitante(diarioId, visitante) {
     const diario = await this.findById(diarioId);
-    let visitantes = [];
+    let visitantes;
     try {
       visitantes = diario.visitantes ? JSON.parse(diario.visitantes) : [];
     } catch (err) {

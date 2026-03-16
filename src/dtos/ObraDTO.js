@@ -5,6 +5,7 @@ class ObraDTO {
     this.codigo = obra.codigo;
     this.cliente = obra.cliente;
     this.endereco = obra.endereco;
+    this.coordenadas = obra.coordenadas || null;
     this.responsavel = obra.responsavel;
     this.dataInicio = obra.dataInicio;
     this.dataPrevisaoTermino = obra.dataPrevisaoTermino;

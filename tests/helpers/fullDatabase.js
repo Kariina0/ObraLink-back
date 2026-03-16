@@ -37,6 +37,7 @@ async function setupFullDb() {
     t.increments("id");
     t.string("nome");
     t.string("codigo").unique().nullable();
+    t.string("cliente").nullable();
     t.text("endereco").nullable();
     t.text("coordenadas").nullable();
     t.integer("responsavel").nullable();
@@ -50,6 +51,16 @@ async function setupFullDb() {
     t.text("observacoes").nullable();
     t.string("syncId").nullable();
     t.text("metadata").nullable();
+    t.timestamps(true, true);
+  });
+
+  // ── Obra Encarregados (N:N) ───────────────────────────────────────────────
+  await knexInstance.schema.createTableIfNotExists("obra_encarregados", (t) => {
+    t.increments("id");
+    t.integer("obraId").notNullable();
+    t.integer("userId").notNullable();
+    t.string("funcao").nullable();
+    t.datetime("dataInclusao").nullable();
     t.timestamps(true, true);
   });
 
@@ -70,12 +81,20 @@ async function setupFullDb() {
     t.integer("responsavel").nullable();
     t.datetime("data").nullable();
     t.text("periodo").nullable();
+    t.text("area").nullable();
+    t.string("tipoServico").nullable();
+    t.decimal("comprimento", 14, 4).nullable();
+    t.decimal("largura", 14, 4).nullable();
+    t.decimal("altura", 14, 4).nullable();
+    t.decimal("areaCalculada", 14, 4).nullable();
+    t.decimal("volume", 14, 4).nullable();
     t.text("itens").nullable();
     t.text("anexos").nullable();
     t.text("observacoes").nullable();
     t.string("status").nullable();
     t.integer("aprovadoPor").nullable();
     t.datetime("dataAprovacao").nullable();
+    t.text("motivoRejeicao").nullable();
     t.boolean("sincronizado").defaultTo(false);
     t.string("syncId").nullable();
     t.datetime("clientTimestamp").nullable();
