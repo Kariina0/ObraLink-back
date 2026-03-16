@@ -57,13 +57,8 @@ class BaseRepository {
         return queryBuilder.whereNull(`${this.table}.metadata_deletedAt`);
       }
 
-      // Fallback: try JSON metadata, using json_extract if available
-      // This may be supported depending on SQLite build; if not, try a LIKE check
-      try {
-        return queryBuilder.whereRaw("json_extract(metadata, '$.deletedAt') IS NULL");
-      } catch (err) {
-        return queryBuilder.whereRaw("metadata NOT LIKE '%\"deletedAt\":%' OR json_extract(metadata, '$.deletedAt') IS NULL");
-      }
+      // Fallback: PostgreSQL JSONB — cast text column to jsonb and check deletedAt key
+      return queryBuilder.whereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)");
     })();
   }
 
@@ -116,10 +111,10 @@ class BaseRepository {
         // support json fields like 'metadata.createdAt'
         if (parsed.key && parsed.key.includes(".")) {
           const parts = parsed.key.split(".");
-          // special-case metadata.* to use json_extract
+          // special-case metadata.* to use PostgreSQL JSONB operator
           if (parts[0] === "metadata") {
-            const jsonPath = `$.${parts.slice(1).join('.')}`;
-            qb.orderByRaw(`json_extract(metadata, '${jsonPath}') ${parsed.dir}`);
+            const jsonKey = parts.slice(1).join(".");
+            qb.orderByRaw(`(metadata::jsonb)->>'${jsonKey}' ${parsed.dir}`);
           } else {
             // fallback to raw ordering for other dotted keys
             qb.orderByRaw(`${parsed.key} ${parsed.dir}`);
@@ -161,9 +156,10 @@ class BaseRepository {
     // filter out unknown columns to avoid SQLITE_ERROR for extra fields
     const insertRow = Object.fromEntries(Object.entries(row).filter(([k]) => allowed.includes(k)));
 
-    const inserted = await this.knex(this.table).insert(insertRow);
-    // inserted returns array with id for sqlite
-    const id = Array.isArray(inserted) ? inserted[0] : inserted;
+    const inserted = await this.knex(this.table).insert(insertRow).returning("id");
+    // PostgreSQL returns [{ id: N }], SQLite returns [N]
+    const raw = Array.isArray(inserted) ? inserted[0] : inserted;
+    const id = typeof raw === "object" && raw !== null ? raw.id : raw;
     return this.findById(id);
   }
 

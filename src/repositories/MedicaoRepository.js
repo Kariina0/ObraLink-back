@@ -48,9 +48,7 @@ class MedicaoRepository extends BaseRepository {
       .leftJoin("obras", "medicoes.obra", "obras.id")
       // JOIN opcional com users para obter o nome do responsável
       .leftJoin("users", "medicoes.responsavel", "users.id")
-      .whereRaw(
-        "(json_extract(medicoes.metadata, '$.deletedAt') IS NULL OR medicoes.metadata NOT LIKE '%\"deletedAt\":%')"
-      );
+      .whereRaw("(medicoes.metadata IS NULL OR (medicoes.metadata::jsonb)->>'deletedAt' IS NULL)");
 
     if (filters.obra) qb = qb.andWhere("medicoes.obra", Number(filters.obra));
     if (filters.responsavel) qb = qb.andWhere("medicoes.responsavel", Number(filters.responsavel));
@@ -111,9 +109,7 @@ class MedicaoRepository extends BaseRepository {
     // Load medicoes aprovadas for obra and sum items on application side
     const rows = await this.knex("medicoes")
       .where({ obra: obraId, status: "aprovada" })
-      .andWhereRaw(
-        `json_extract(metadata, '$.deletedAt') IS NULL OR metadata NOT LIKE '%"deletedAt":%'`
-      );
+      .andWhereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)");
     let total = 0;
     for (const r of rows) {
       try {

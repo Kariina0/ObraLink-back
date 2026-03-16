@@ -40,10 +40,10 @@ class UserRepository extends BaseRepository {
     // não são dados do usuário e não devem constar em exportações LGPD.
     const { senha, refreshToken, ...safeUser } = rawUser;
 
-    const medicoes = await this.knex("medicoes").where({ responsavel: userId }).andWhereRaw("json_extract(metadata, '$.deletedAt') IS NULL OR metadata NOT LIKE '%\"deletedAt\":%'");
-    const diarios = await this.knex("diarios").where({ responsavel: userId }).andWhereRaw("json_extract(metadata, '$.deletedAt') IS NULL OR metadata NOT LIKE '%\"deletedAt\":%'");
-    const solicitacoes = await this.knex("solicitacoes_compra").where({ solicitante: userId }).andWhereRaw("json_extract(metadata, '$.deletedAt') IS NULL OR metadata NOT LIKE '%\"deletedAt\":%'");
-    const arquivos = await this.knex("arquivos").where({ uploadedBy: userId }).andWhereRaw("json_extract(metadata, '$.deletedAt') IS NULL OR metadata NOT LIKE '%\"deletedAt\":%'");
+    const medicoes = await this.knex("medicoes").where({ responsavel: userId }).andWhereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)");
+    const diarios = await this.knex("diarios").where({ responsavel: userId }).andWhereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)");
+    const solicitacoes = await this.knex("solicitacoes_compra").where({ solicitante: userId }).andWhereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)");
+    const arquivos = await this.knex("arquivos").where({ uploadedBy: userId }).andWhereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)");
 
     return {
       usuario: safeUser,

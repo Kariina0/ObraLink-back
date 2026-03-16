@@ -64,7 +64,7 @@ class ArquivoRepository extends BaseRepository {
   async getStorageUsage(obraId = null) {
     const qb = this.knex(this.table);
     if (obraId) qb.where({ obra: obraId });
-    qb.andWhereRaw(`json_extract(metadata, '$.deletedAt') IS NULL OR metadata NOT LIKE '%"deletedAt":%'`);
+    qb.andWhereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)");
     const rows = await qb.select('tamanho');
     let totalSize = 0;
     for (const r of rows) totalSize += Number(r.tamanho || 0);

@@ -13,10 +13,10 @@ class Database {
       this.knex = Knex(knexfile[env] || knexfile.development);
       // Testar conexão
       await this.knex.raw("SELECT 1");
-      logger.info("✅ Conectado ao SQLite (Knex) com sucesso");
+      logger.info("✅ Conectado ao PostgreSQL/Supabase (Knex) com sucesso");
       return this.knex;
     } catch (err) {
-      logger.error("❌ Erro ao conectar ao SQLite:", err);
+      logger.error("❌ Erro ao conectar ao PostgreSQL/Supabase:", err);
       process.exit(1);
     }
   }
@@ -24,7 +24,7 @@ class Database {
   async disconnect() {
     if (this.knex) {
       await this.knex.destroy();
-      logger.info("📴 Desconectado do SQLite (Knex)");
+      logger.info("📴 Desconectado do PostgreSQL/Supabase (Knex)");
     }
   }
 

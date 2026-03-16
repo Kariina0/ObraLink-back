@@ -35,7 +35,7 @@ class ObraRepository extends BaseRepository {
       let qb = this.knex("obras")
         .join("obra_encarregados", "obras.id", "obra_encarregados.obraId")
         .where("obra_encarregados.userId", userId)
-        .whereRaw("(json_extract(obras.metadata, '$.deletedAt') IS NULL OR obras.metadata NOT LIKE '%\"deletedAt\":%')");
+        .whereRaw("(obras.metadata IS NULL OR (obras.metadata::jsonb)->>'deletedAt' IS NULL)");
 
       if (status) qb = qb.andWhere("obras.status", status);
 
@@ -57,7 +57,7 @@ class ObraRepository extends BaseRepository {
 
     let qbFallback = this.knex("obras")
       .where("obras.id", user.obraAtual)
-      .whereRaw("(json_extract(obras.metadata, '$.deletedAt') IS NULL OR obras.metadata NOT LIKE '%\"deletedAt\":%')");
+      .whereRaw("(obras.metadata IS NULL OR (obras.metadata::jsonb)->>'deletedAt' IS NULL)");
 
     if (status) qbFallback = qbFallback.andWhere("obras.status", status);
 

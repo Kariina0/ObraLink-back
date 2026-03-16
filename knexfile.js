@@ -1,33 +1,37 @@
+require("dotenv").config();
+
 module.exports = {
   development: {
-    client: "sqlite3",
+    client: "pg",
     connection: {
-      filename: process.env.DB_PATH || "./data/sqlite.db",
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
     },
-    useNullAsDefault: true,
     migrations: {
       directory: "./migrations",
     },
+    pool: { min: 2, max: 10 },
   },
   test: {
-    client: "sqlite3",
+    client: "pg",
     connection: {
-      filename: ":memory:",
+      connectionString: process.env.DATABASE_URL_TEST || process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
     },
-    useNullAsDefault: true,
     migrations: {
       directory: "./migrations",
     },
+    pool: { min: 1, max: 2 },
   },
   production: {
-    client: "sqlite3",
+    client: "pg",
     connection: {
-      filename: process.env.DB_PATH || "./data/sqlite.db",
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
     },
-    useNullAsDefault: true,
-    pool: { min: 1, max: 1 },
     migrations: {
       directory: "./migrations",
     },
+    pool: { min: 2, max: 10 },
   },
 };

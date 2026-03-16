@@ -8,7 +8,7 @@ const { PERFIS } = require("../constants");
 const getKnex = () => require("../config/database").knex;
 
 /**
- * Extrai valor numérico do campo orcamento (armazenado como TEXT no SQLite).
+ * Extrai valor numérico do campo orcamento (armazenado como TEXT no banco).
  * Aceita número puro, string numérica ou objeto { total: 1234 }.
  */
 function parseOrcamento(raw) {
@@ -51,7 +51,7 @@ router.get(
     // Buscar todas as obras ativas
     const obras = await knex("obras")
       .select("id", "nome", "status", "orcamento", "dataPrevisaoTermino")
-      .whereRaw("json_extract(metadata, '$.deletedAt') IS NULL")
+      .whereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)")
       .whereNot("status", "cancelada");
 
     if (obras.length === 0) {
@@ -96,7 +96,7 @@ router.get(
 
     // Contar e somar solicitações pendentes por obra
     const solicitacoesRaw = await knex("solicitacoes_compra")
-      .select("obra", knex.raw("count(id) as total"), knex.raw("sum(coalesce(valorTotal, 0)) as valorEstimado"))
+      .select("obra", knex.raw("count(id) as total"), knex.raw(`sum(coalesce("valorTotal", 0)) as "valorEstimado"`))
       .whereIn("obra", obraIds)
       .where("status", "pendente")
       .groupBy("obra");
@@ -222,7 +222,7 @@ router.get(
 
     const obras = await knex("obras")
       .select("id", "nome", "status", "orcamento", "dataPrevisaoTermino")
-      .whereRaw("json_extract(metadata, '$.deletedAt') IS NULL")
+      .whereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)")
       .whereNot("status", "cancelada");
 
     const obraIds = obras.map((o) => o.id);
@@ -323,7 +323,7 @@ router.get(
     let qb = knex("medicoes")
       .leftJoin("obras", "medicoes.obra", "obras.id")
       .leftJoin("users", "medicoes.responsavel", "users.id")
-      .whereRaw("json_extract(medicoes.metadata, '$.deletedAt') IS NULL")
+      .whereRaw("(medicoes.metadata IS NULL OR (medicoes.metadata::jsonb)->>'deletedAt' IS NULL)")
       .select(
         "medicoes.id",
         "obras.nome as obraNome",

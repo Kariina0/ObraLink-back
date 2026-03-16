@@ -45,19 +45,19 @@ exports.up = async function (knex) {
   await knex.raw("CREATE INDEX IF NOT EXISTS idx_medicoes_status ON medicoes(status)");
   const hasTipoServico = await knex.schema.hasColumn("medicoes", "tipoServico");
   if (hasTipoServico) {
-    await knex.raw("CREATE INDEX IF NOT EXISTS idx_medicoes_tipoServico ON medicoes(tipoServico)");
+    await knex.raw(`CREATE INDEX IF NOT EXISTS idx_medicoes_tiposervico ON medicoes("tipoServico")`);
   }
-  await knex.raw("CREATE INDEX IF NOT EXISTS idx_medicoes_deletedAt ON medicoes(deletedAt)");
+  await knex.raw(`CREATE INDEX IF NOT EXISTS idx_medicoes_deletedat ON medicoes("deletedAt")`);
   await knex.raw("CREATE INDEX IF NOT EXISTS idx_medicoes_created_at ON medicoes(created_at)");
 
   // Índices em obras
   await knex.raw("CREATE INDEX IF NOT EXISTS idx_obras_status ON obras(status)");
-  await knex.raw("CREATE INDEX IF NOT EXISTS idx_obras_deletedAt ON obras(deletedAt)");
+  await knex.raw(`CREATE INDEX IF NOT EXISTS idx_obras_deletedat ON obras("deletedAt")`);
 
   // Índices em arquivos
   await knex.raw("CREATE INDEX IF NOT EXISTS idx_arquivos_obra ON arquivos(obra)");
-  await knex.raw("CREATE INDEX IF NOT EXISTS idx_arquivos_uploadedBy ON arquivos(uploadedBy)");
-  await knex.raw("CREATE INDEX IF NOT EXISTS idx_arquivos_deletedAt ON arquivos(deletedAt)");
+  await knex.raw(`CREATE INDEX IF NOT EXISTS idx_arquivos_uploadedby ON arquivos("uploadedBy")`);
+  await knex.raw(`CREATE INDEX IF NOT EXISTS idx_arquivos_deletedat ON arquivos("deletedAt")`);
 
   // Índices em solicitacoes_compra
   await knex.raw("CREATE INDEX IF NOT EXISTS idx_solicitacoes_obra ON solicitacoes_compra(obra)");
@@ -68,14 +68,14 @@ exports.down = async function (knex) {
   await knex.raw("DROP INDEX IF EXISTS idx_medicoes_obra");
   await knex.raw("DROP INDEX IF EXISTS idx_medicoes_responsavel");
   await knex.raw("DROP INDEX IF EXISTS idx_medicoes_status");
-  await knex.raw("DROP INDEX IF EXISTS idx_medicoes_tipoServico");
-  await knex.raw("DROP INDEX IF EXISTS idx_medicoes_deletedAt");
+  await knex.raw("DROP INDEX IF EXISTS idx_medicoes_tiposervico");
+  await knex.raw("DROP INDEX IF EXISTS idx_medicoes_deletedat");
   await knex.raw("DROP INDEX IF EXISTS idx_medicoes_created_at");
   await knex.raw("DROP INDEX IF EXISTS idx_obras_status");
-  await knex.raw("DROP INDEX IF EXISTS idx_obras_deletedAt");
+  await knex.raw("DROP INDEX IF EXISTS idx_obras_deletedat");
   await knex.raw("DROP INDEX IF EXISTS idx_arquivos_obra");
-  await knex.raw("DROP INDEX IF EXISTS idx_arquivos_uploadedBy");
-  await knex.raw("DROP INDEX IF EXISTS idx_arquivos_deletedAt");
+  await knex.raw("DROP INDEX IF EXISTS idx_arquivos_uploadedby");
+  await knex.raw("DROP INDEX IF EXISTS idx_arquivos_deletedat");
   await knex.raw("DROP INDEX IF EXISTS idx_solicitacoes_obra");
   await knex.raw("DROP INDEX IF EXISTS idx_solicitacoes_status");
 };
