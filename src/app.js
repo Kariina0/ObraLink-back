@@ -46,6 +46,27 @@ app.use(limiter);
 
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "10mb" }));
 
+app.get("/", (_req, res) => {
+  res.json({
+    success: true,
+    message: "ObraLink API online",
+    data: {
+      health: "/health",
+      api: "/api",
+      apiHealth: "/api/health",
+      timestamp: new Date().toISOString(),
+    },
+  });
+});
+
+app.get("/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    service: "ObraLink API",
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Rotas — ponto único de registro via routes/index.js
 // Inclui: /api/health, /api/auth, /api/measurements, /api/files, /api/sync, /api/obras, /api/solicitacoes
 app.use("/api", require("./routes"));

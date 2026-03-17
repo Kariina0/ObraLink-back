@@ -12,19 +12,27 @@
 
 const request = require("supertest");
 const { makeToken } = require("../helpers/auth");
-const { setupFullDb, teardownFullDb, getFullDb } = require("../helpers/fullDatabase");
+const {
+  setupFullDb,
+  teardownFullDb,
+  getFullDb,
+} = require("../helpers/fullDatabase");
 
 // ── Mocks (devem preceder qualquer require do app) ────────────────────────────
 jest.mock("../../src/config/database", () => ({
   connect: jest.fn().mockResolvedValue(undefined),
   disconnect: jest.fn().mockResolvedValue(undefined),
   isConnected: jest.fn().mockReturnValue(true),
-  get knex() { return require("../helpers/fullDatabase").getFullDb(); },
+  get knex() {
+    return require("../helpers/fullDatabase").getFullDb();
+  },
 }));
 
 jest.mock("../../src/config/supabaseClient", () => {
   const { createSupabaseMock } = require("../helpers/supabaseMock");
-  const mock = createSupabaseMock(() => require("../helpers/fullDatabase").getFullDb());
+  const mock = createSupabaseMock(() =>
+    require("../helpers/fullDatabase").getFullDb(),
+  );
   mock.createUserClient = jest.fn().mockReturnValue(mock);
   return mock;
 });
@@ -38,8 +46,22 @@ beforeAll(async () => {
   const db = getFullDb();
   // Dados de base
   await db("users").insert([
-    { id: 1, nome: "Admin", email: "admin@gen.com", senha: "hash", perfil: "admin", isActive: true },
-    { id: 2, nome: "Encarregado", email: "enc@gen.com", senha: "hash", perfil: "encarregado", isActive: true },
+    {
+      id: 1,
+      nome: "Admin",
+      email: "admin@gen.com",
+      senha: "hash",
+      perfil: "admin",
+      isActive: true,
+    },
+    {
+      id: 2,
+      nome: "Encarregado",
+      email: "enc@gen.com",
+      senha: "hash",
+      perfil: "encarregado",
+      isActive: true,
+    },
   ]);
   await db("obras").insert([
     { id: 1, nome: "Obra Alpha", codigo: "OBR-001", status: "em_andamento" },
@@ -54,6 +76,24 @@ afterAll(async () => {
 // ── Tokens ────────────────────────────────────────────────────────────────────
 const adminToken = makeToken({ id: 1, perfil: "admin" });
 const encarregadoToken = makeToken({ id: 2, perfil: "encarregado" });
+
+describe("Rotas públicas de deploy", () => {
+  test("GET / retorna status básico da API", async () => {
+    const res = await request(app).get("/");
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.health).toBe("/health");
+    expect(res.body.data.apiHealth).toBe("/api/health");
+  });
+
+  test("GET /health retorna 200", async () => {
+    const res = await request(app).get("/health");
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("ok");
+  });
+});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GET /api/obras
@@ -103,7 +143,9 @@ describe("POST /api/solicitacoes", () => {
   test("401 — sem autenticação", async () => {
     const res = await request(app)
       .post("/api/solicitacoes")
-      .send({ itens: [{ descricao: "Parafuso", quantidade: 100, unidade: "un" }] });
+      .send({
+        itens: [{ descricao: "Parafuso", quantidade: 100, unidade: "un" }],
+      });
     expect(res.status).toBe(401);
   });
 
@@ -111,7 +153,9 @@ describe("POST /api/solicitacoes", () => {
     const res = await request(app)
       .post("/api/solicitacoes")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ itens: [{ descricao: "Parafuso M8", quantidade: 200, unidade: "un" }] });
+      .send({
+        itens: [{ descricao: "Parafuso M8", quantidade: 200, unidade: "un" }],
+      });
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
@@ -151,7 +195,10 @@ describe("POST /api/measurements", () => {
   test("401 — sem autenticação", async () => {
     const res = await request(app)
       .post("/api/measurements")
-      .send({ obra: 1, itens: [{ descricao: "Alvenaria", quantidade: 10, unidade: "m²" }] });
+      .send({
+        obra: 1,
+        itens: [{ descricao: "Alvenaria", quantidade: 10, unidade: "m²" }],
+      });
     expect(res.status).toBe(401);
   });
 
@@ -163,7 +210,14 @@ describe("POST /api/measurements", () => {
         obra: 1,
         area: "Piso Térreo",
         tipoServico: "alvenaria",
-        itens: [{ descricao: "Alvenaria", quantidade: 10, unidade: "m²", valorUnitario: 50 }],
+        itens: [
+          {
+            descricao: "Alvenaria",
+            quantidade: 10,
+            unidade: "m²",
+            valorUnitario: 50,
+          },
+        ],
         observacoes: "Teste canônico",
       });
 
@@ -221,7 +275,10 @@ describe("GET /api/measurements/:id", () => {
     const res = await request(app)
       .post("/api/measurements")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ obra: 1, itens: [{ descricao: "Para buscar", quantidade: 1, unidade: "un" }] });
+      .send({
+        obra: 1,
+        itens: [{ descricao: "Para buscar", quantidade: 1, unidade: "un" }],
+      });
     medicaoId = res.body.data?.id;
   });
 
@@ -236,7 +293,10 @@ describe("GET /api/measurements/:id", () => {
     const createRes = await request(app)
       .post("/api/measurements")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ obra: 1, itens: [{ descricao: "Buscar por ID", quantidade: 2, unidade: "m" }] });
+      .send({
+        obra: 1,
+        itens: [{ descricao: "Buscar por ID", quantidade: 2, unidade: "m" }],
+      });
 
     const id = createRes.body.data?.id;
     if (!id) return; // skip se criação falhou por outro motivo
