@@ -153,18 +153,37 @@ class ObraService {
 
   /**
    * Vincula encarregado a obra. Apenas ADMIN.
+   * A função (funcao) é sempre derivada do perfil do usuário no sistema.
    */
-  async vincularEncarregado(obraId, userId, funcao, adminPerfil) {
+  async vincularEncarregado(obraId, userId, _funcao, adminPerfil) {
     if (adminPerfil !== PERFIS.ADMIN) {
       throw new ForbiddenError(
         "Apenas administradores podem vincular encarregados",
       );
     }
 
-    // Verificar se usuário existe
-    await userRepository.findById(userId);
+    // Verificar se usuário existe e obter seu perfil
+    const user = await userRepository.findById(userId);
+
+    // Funcao sempre reflete o perfil real do usuário no sistema
+    const funcao = user.perfil;
 
     return await obraRepository.vincularEncarregado(obraId, userId, funcao);
+  }
+
+  /**
+   * Lista usuários disponíveis para vincular como encarregados (ainda não vinculados à obra).
+   * Apenas ADMIN.
+   */
+  async listarEncarregadosDisponiveis(obraId, adminPerfil) {
+    if (adminPerfil !== PERFIS.ADMIN) {
+      throw new ForbiddenError(
+        "Apenas administradores podem listar encarregados disponíveis",
+      );
+    }
+
+    await obraRepository.findById(obraId); // lança NotFoundError se obra não existir
+    return await obraRepository.listarDisponiveisParaObra(obraId);
   }
 
   /**

@@ -1,6 +1,5 @@
 const BaseRepository = require("./BaseRepository");
 const fs = require("fs").promises;
-const path = require("path");
 
 class ArquivoRepository extends BaseRepository {
   constructor() {
@@ -8,42 +7,48 @@ class ArquivoRepository extends BaseRepository {
   }
 
   async findBySyncId(syncId) {
-    return await this.findOne({ syncId });
+    return this.findOne({ syncId });
   }
 
   async findByObra(obraId, options = {}) {
-    return await this.findAll({ obra: obraId }, options);
+    return this.findAll({ obra: obraId }, options);
   }
 
   async findByTipo(tipo, options = {}) {
-    return await this.findAll({ tipo }, options);
+    return this.findAll({ tipo }, options);
   }
 
   async findByUploader(userId, options = {}) {
-    return await this.findAll({ uploadedBy: userId }, options);
+    return this.findAll({ uploadedBy: userId }, options);
   }
 
   async findPendentes(options = {}) {
-    return await this.findAll({ sincronizado: false }, options);
+    return this.findAll({ sincronizado: false }, options);
   }
 
   async markAsSynced(arquivoId) {
-    return await this.update(arquivoId, { sincronizado: true });
+    return this.update(arquivoId, { sincronizado: true });
   }
 
+  /**
+   * Soft-deleta o registro no banco e remove o arquivo físico local (se existir).
+   * Soft-delete no banco PRIMEIRO — se falhar, nada é perdido no storage.
+   * C-4: atomicidade garantida pela ordem das operações.
+   */
   async deleteWithFile(id) {
     const arquivo = await this.findById(id);
 
-    // Soft delete no banco PRIMEIRO — se falhar aqui, nada é perdido
+    // Soft-delete no banco primeiro
     const result = await this.delete(id);
 
-    // Remover arquivo físico APÓS confirmação do banco
-    // Falha aqui é tolerável: registro já está marcado como deletado
-    try {
-      if (arquivo && arquivo.caminho) await fs.unlink(arquivo.caminho);
-    } catch (error) {
-      const logger = require("../utils/logger");
-      logger.error("Erro ao excluir arquivo físico:", error);
+    // Arquivo físico local: remoção após confirmação do banco
+    if (arquivo?.caminho) {
+      try {
+        await fs.unlink(arquivo.caminho);
+      } catch (error) {
+        const logger = require("../utils/logger");
+        logger.error("Erro ao excluir arquivo físico:", error.message);
+      }
     }
 
     return result;
@@ -51,7 +56,6 @@ class ArquivoRepository extends BaseRepository {
 
   async deleteMultipleWithFiles(ids) {
     const results = [];
-
     for (const id of ids) {
       try {
         const result = await this.deleteWithFile(id);
@@ -60,18 +64,23 @@ class ArquivoRepository extends BaseRepository {
         results.push({ id, success: false, error: error.message });
       }
     }
-
     return results;
   }
 
+  /**
+   * Retorna uso de storage (soma de tamanhos e contagem) por obra.
+   * Usa RPC get_storage_usage definida em supabase_rls_auth.sql.
+   */
   async getStorageUsage(obraId = null) {
-    const qb = this.knex(this.table);
-    if (obraId) qb.where({ obra: obraId });
-    qb.andWhereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)");
-    const rows = await qb.select('tamanho');
-    let totalSize = 0;
-    for (const r of rows) totalSize += Number(r.tamanho || 0);
-    return { totalSize, totalFiles: rows.length };
+    const { data, error } = await this.supabase.rpc("get_storage_usage", {
+      p_obra_id: obraId ? Number(obraId) : null,
+    });
+    if (error) throw error;
+
+    const rows = data ?? [];
+    const totalSize = rows.reduce((acc, r) => acc + Number(r.total_bytes ?? 0), 0);
+    const totalFiles = rows.reduce((acc, r) => acc + Number(r.total_arquivos ?? 0), 0);
+    return { totalSize, totalFiles };
   }
 }
 

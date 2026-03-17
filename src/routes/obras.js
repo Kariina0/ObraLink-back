@@ -59,6 +59,17 @@ router.put(
 router.delete("/:id", authorize(PERFIS.ADMIN), obraController.delete);
 
 /**
+ * @route GET /api/obras/:id/encarregados/disponiveis
+ * @desc Listar usuários disponíveis para vincular como encarregados (ainda não vinculados)
+ * @access Admin
+ */
+router.get(
+  "/:id/encarregados/disponiveis",
+  authorize(PERFIS.ADMIN),
+  obraController.listarEncarregadosDisponiveis,
+);
+
+/**
  * @route POST /api/obras/:id/encarregados
  * @desc Vincular encarregado a uma obra
  * @access Admin

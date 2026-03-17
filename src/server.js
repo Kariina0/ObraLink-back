@@ -1,13 +1,19 @@
 require("dotenv").config();
 const app = require("./app");
-const database = require("./config/database");
+const supabase = require("./config/supabaseClient");
 const logger = require("./utils/logger");
 
 const PORT = process.env.PORT || 5000;
 let server;
 
+async function verifyDbConnection() {
+  const { error } = await supabase.from("users").select("id").limit(1);
+  if (error) throw new Error(`Falha ao conectar ao Supabase: ${error.message}`);
+  logger.info("Conectado ao Supabase (PostgreSQL).");
+}
+
 async function start() {
-  await database.connect();
+  await verifyDbConnection();
   server = app.listen(PORT, () => {
     logger.info(`Servidor rodando na porta ${PORT}`);
   });
@@ -20,8 +26,7 @@ async function shutdown(signal) {
       logger.info("Conexões HTTP encerradas.");
     });
   }
-  await database.disconnect();
-  logger.info("Banco de dados desconectado. Saindo.");
+  logger.info("Saindo.");
   process.exit(0);
 }
 

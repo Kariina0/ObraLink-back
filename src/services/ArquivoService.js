@@ -48,6 +48,15 @@ class ArquivoService {
       let comprimido = false;
       let dimensoes = null;
 
+      // Compatibilidade: quando multer está em diskStorage, não existe file.buffer.
+      // Nesse caso, lê o conteúdo do arquivo temporário para manter o fluxo Supabase.
+      if (!buffer && file.path) {
+        buffer = await fs.readFile(file.path);
+      }
+      if (!buffer) {
+        throw new ValidationError("Arquivo inválido: conteúdo não disponível para upload");
+      }
+
       // ── C-3: Validar magic bytes ─────────────────────────────────────────────
       // Impede que arquivos maliciosos sejam enviados com MIME type forjado.
       if (!validateBuffer(buffer, file.mimetype)) {
@@ -85,6 +94,11 @@ class ArquivoService {
         tipoNormalizado,
         file.mimetype,
       );
+
+      // Se o arquivo veio por diskStorage, remove o temporário após enviar ao storage.
+      if (file.path) {
+        await fs.unlink(file.path).catch(() => {});
+      }
 
       const arquivoData = {
         nome: filename,

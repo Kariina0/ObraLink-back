@@ -70,6 +70,19 @@ class ObraController {
   });
 
   /**
+   * @route GET /api/obras/:id/encarregados/disponiveis
+   * @desc Listar usuários disponíveis para vincular como encarregados (não vinculados ainda)
+   * @access Admin
+   */
+  listarEncarregadosDisponiveis = asyncHandler(async (req, res) => {
+    const usuarios = await obraService.listarEncarregadosDisponiveis(
+      req.params.id,
+      req.user.perfil,
+    );
+    res.json(successResponse(usuarios, "Usuários disponíveis para encarregado"));
+  });
+
+  /**
    * @route POST /api/obras/:id/encarregados
    * @desc Vincular encarregado a uma obra
    * @access Admin

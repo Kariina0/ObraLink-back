@@ -1,276 +1,338 @@
 const { NotFoundError } = require("../utils/errors");
-const database = require("../config/database");
+const supabase = require("../config/supabaseClient");
 
 /**
- * BaseRepository usando Knex (SQLite). Aceita tanto um modelo Mongoose
- * (para compatibilidade) quanto uma string com o nome da tabela.
+ * BaseRepository usando Supabase (PostgreSQL via supabase-js).
+ *
+ * Premissas pós-migração:
+ *  - Todas as tabelas possuem coluna "deletedAt" TIMESTAMPTZ para soft-delete.
+ *  - metadata é armazenado como TEXT (JSON serializado).
+ *  - Todas as tabelas possuem created_at e updated_at (via trigger).
  */
 class BaseRepository {
-  constructor(modelOrTable) {
-    this.modelOrTable = modelOrTable;
-    this.table = typeof modelOrTable === "string" ? modelOrTable : (modelOrTable && modelOrTable.collection ? modelOrTable.collection.name : null);
-    // Keep reference to original model for backward compatibility (many repos still use this.model)
-    this.model = modelOrTable && modelOrTable.collection ? modelOrTable : null;
-    this._hasDeletedColumn = {};
-    this._hasMetadataColumnCache = {};
-  }
-
-  get knex() {
-    return database.knex;
-  }
-
-  async _ensureTable() {
-    if (!this.table) throw new Error("Table name not defined for repository");
-  }
-
-  async _hasMetadataDeletedColumn() {
-    if (this._hasDeletedColumn[this.table] !== undefined) return this._hasDeletedColumn[this.table];
-    try {
-      const exists = await this.knex.schema.hasColumn(this.table, "metadata_deletedAt");
-      this._hasDeletedColumn[this.table] = exists;
-      return exists;
-    } catch (err) {
-      this._hasDeletedColumn[this.table] = false;
-      return false;
+  /**
+   * @param {string} table - Nome da tabela PostgreSQL.
+   */
+  constructor(table) {
+    if (!table || typeof table !== "string") {
+      throw new Error("BaseRepository requer o nome da tabela como string.");
     }
+    this.table = table;
+    // Compatibilidade retroativa: alguns repositórios filhos ainda testam this.model
+    this.model = null;
   }
 
-  async _hasMetadataColumn() {
-    if (this._hasMetadataColumnCache[this.table] !== undefined) return this._hasMetadataColumnCache[this.table];
-    try {
-      const exists = await this.knex.schema.hasColumn(this.table, "metadata");
-      this._hasMetadataColumnCache[this.table] = exists;
-      return exists;
-    } catch (err) {
-      this._hasMetadataColumnCache[this.table] = false;
-      return false;
+  /**
+   * Acesso ao cliente Supabase para consultas avançadas nos repositórios filhos.
+   * Use this.supabase nas subclasses em vez de this.knex.
+   */
+  get supabase() {
+    return supabase;
+  }
+
+  // ── Helpers de soft-delete ─────────────────────────────────────────────────
+
+  /**
+   * Aplica filtro de soft-delete em uma query supabase-js.
+   * Espera que a tabela tenha coluna "deletedAt" TIMESTAMPTZ.
+   */
+  _applyNotDeleted(query) {
+    return query.is("deletedAt", null);
+  }
+
+  _isMissingDeletedAtColumn(error) {
+    const message = String(error?.message || "").toLowerCase();
+    return message.includes("deletedat") && message.includes("does not exist");
+  }
+
+  async _runWithDeletedAtFallback(runQuery) {
+    const first = await runQuery(true);
+    if (!first?.error || !this._isMissingDeletedAtColumn(first.error)) {
+      return first;
     }
+    return runQuery(false);
   }
 
-  _isSqlite() {
-    try {
-      const client = this.knex.client.config.client;
-      return client === "sqlite3" || client === "better-sqlite3";
-    } catch {
-      return false;
-    }
-  }
+  // ── CRUD Base ──────────────────────────────────────────────────────────────
 
-  /** Returns a raw SQL fragment for filtering out soft-deleted rows via metadata JSON. */
-  _notDeletedCondition(tablePrefix = null) {
-    const col = tablePrefix ? `${tablePrefix}.metadata` : "metadata";
-    if (this._isSqlite()) {
-      return `(${col} IS NULL OR json_extract(${col}, '$.deletedAt') IS NULL)`;
-    }
-    return `(${col} IS NULL OR (${col}::jsonb)->>'deletedAt' IS NULL)`;
-  }
-
-  _applyNotDeleted(queryBuilder) {
-    // Prefer explicit metadata_deletedAt column if present
-    return (async () => {
-      const hasMetadataCol = await this._hasMetadataColumn();
-      const hasCol = await this._hasMetadataDeletedColumn();
-      if (!hasMetadataCol && !hasCol) return queryBuilder;
-      if (hasCol) {
-        return queryBuilder.whereNull(`${this.table}.metadata_deletedAt`);
-      }
-
-      // Fallback: use client-appropriate JSON syntax
-      if (this._isSqlite()) {
-        return queryBuilder.whereRaw("(metadata IS NULL OR json_extract(metadata, '$.deletedAt') IS NULL)");
-      }
-      // PostgreSQL JSONB
-      return queryBuilder.whereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)");
-    })();
-  }
-
+  /**
+   * Busca registro por ID. Lança NotFoundError se não encontrado ou deletado.
+   * @param {number} id
+   * @returns {Promise<object>}
+   */
   async findById(id) {
-    await this._ensureTable();
-    const qb = this.knex(this.table).where({ id });
-    await this._applyNotDeleted(qb);
-    const row = await qb.first();
-    if (!row) throw new NotFoundError("Registro não encontrado");
-    return row;
+    const { data, error } = await this._runWithDeletedAtFallback((withDeletedAt) => {
+      let query = supabase.from(this.table).select("*").eq("id", id);
+      if (withDeletedAt) {
+        query = this._applyNotDeleted(query);
+      }
+      return query.maybeSingle();
+    });
+
+    if (error) throw error;
+    if (!data) throw new NotFoundError("Registro não encontrado");
+    return data;
   }
 
+  /**
+   * Busca o primeiro registro que satisfaça o filtro (objeto de igualdades).
+   * Retorna null se não encontrado.
+   * @param {object} filter
+   * @returns {Promise<object|null>}
+   */
   async findOne(filter = {}) {
-    await this._ensureTable();
-    const qb = this.knex(this.table).where(filter);
-    await this._applyNotDeleted(qb);
-    const row = await qb.first();
-    return row || null;
+    const { data, error } = await this._runWithDeletedAtFallback((withDeletedAt) => {
+      let query = supabase.from(this.table).select("*");
+      query = this._applyFilters(query, filter);
+      if (withDeletedAt) {
+        query = this._applyNotDeleted(query);
+      }
+      return query.maybeSingle();
+    });
+
+    if (error) throw error;
+    return data ?? null;
   }
 
-  _parseSort(sort) {
-    if (!sort) return null;
-    if (typeof sort === "string") return sort;
-    if (typeof sort === "object") {
-      const key = Object.keys(sort)[0];
-      const dir = sort[key] === -1 ? "desc" : "asc";
-      return { key, dir };
-    }
-    return null;
-  }
-
+  /**
+   * Lista registros paginados.
+   * @param {object} filter - Filtros de igualdade.
+   * @param {object} options - { page, limit, sort: { campo: 'asc'|'desc' } }
+   * @returns {Promise<{ data, total, page, limit }>}
+   */
   async findAll(filter = {}, options = {}) {
-    await this._ensureTable();
     const {
       page = 1,
       limit = 10,
-      sort = { "metadata.createdAt": -1 },
+      sort = { created_at: "desc" },
     } = options;
 
     const offset = (page - 1) * limit;
 
-    const qb = this.knex(this.table).where(filter);
-    await this._applyNotDeleted(qb);
-
-    const parsed = this._parseSort(sort);
-    if (parsed) {
-      if (typeof parsed === "string") {
-        qb.orderBy(parsed);
-      } else {
-        // support json fields like 'metadata.createdAt'
-        if (parsed.key && parsed.key.includes(".")) {
-          const parts = parsed.key.split(".");
-          // special-case metadata.* with client-appropriate JSON operator
-          if (parts[0] === "metadata") {
-            const jsonKey = parts.slice(1).join(".");
-            if (this._isSqlite()) {
-              qb.orderByRaw(`json_extract(metadata, '$.${jsonKey}') ${parsed.dir}`);
-            } else {
-              qb.orderByRaw(`(metadata::jsonb)->>'${jsonKey}' ${parsed.dir}`);
-            }
-          } else {
-            // fallback to raw ordering for other dotted keys
-            qb.orderByRaw(`${parsed.key} ${parsed.dir}`);
-          }
-        } else {
-          qb.orderBy(parsed.key, parsed.dir);
-        }
+    const { data, error, count } = await this._runWithDeletedAtFallback((withDeletedAt) => {
+      let query = supabase.from(this.table).select("*", { count: "exact" });
+      query = this._applyFilters(query, filter);
+      if (withDeletedAt) {
+        query = this._applyNotDeleted(query);
       }
-    }
+      query = this._applySort(query, sort);
+      query = query.range(offset, offset + limit - 1);
+      return query;
+    });
 
-    const data = await qb.limit(limit).offset(offset);
+    if (error) throw error;
 
-    // total count
-    const countQb = this.knex(this.table).count({ count: '*' }).where(filter);
-    await this._applyNotDeleted(countQb);
-    const totalRes = await countQb.first();
-    const total = totalRes ? Number(totalRes.count || totalRes['count(*)'] || 0) : 0;
-
-    return { data, total, page, limit };
+    return { data: data ?? [], total: count ?? 0, page, limit };
   }
 
+  /**
+   * Cria um registro. Injeta metadata.createdAt se não fornecido.
+   * @param {object} data
+   * @returns {Promise<object>}
+   */
   async create(data) {
-    await this._ensureTable();
-    // prepare row and filter to existing columns
     const row = { ...data };
-    const colsInfo = await this.knex(this.table).columnInfo();
-    const allowed = Object.keys(colsInfo || {});
 
-    // handle metadata only if column exists
-    if (allowed.includes("metadata")) {
-      if (!row.metadata) row.metadata = { createdAt: new Date() };
-      else row.metadata = { ...(typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata), createdAt: row.metadata.createdAt || new Date() };
-      row.metadata = JSON.stringify(row.metadata);
-    } else {
-      // ensure we don't try to insert metadata into tables without it
-      delete row.metadata;
+    // Injeta metadata.createdAt para compatibilidade com registros existentes
+    if (!row.metadata) {
+      row.metadata = JSON.stringify({ createdAt: new Date().toISOString() });
+    } else if (typeof row.metadata === "object") {
+      row.metadata = JSON.stringify({
+        createdAt: new Date().toISOString(),
+        ...row.metadata,
+      });
     }
 
-    // filter out unknown columns to avoid SQLITE_ERROR for extra fields
-    const insertRow = Object.fromEntries(Object.entries(row).filter(([k]) => allowed.includes(k)));
+    const { data: created, error } = await supabase
+      .from(this.table)
+      .insert(row)
+      .select()
+      .single();
 
-    const inserted = await this.knex(this.table).insert(insertRow).returning("id");
-    // PostgreSQL returns [{ id: N }], SQLite returns [N]
-    const raw = Array.isArray(inserted) ? inserted[0] : inserted;
-    const id = typeof raw === "object" && raw !== null ? raw.id : raw;
-    return this.findById(id);
+    if (error) throw error;
+    return created;
   }
 
+  /**
+   * Atualiza um registro. Mescla metadata.updatedAt automaticamente.
+   * @param {number} id
+   * @param {object} data
+   * @returns {Promise<object>}
+   */
   async update(id, data) {
-    await this._ensureTable();
-    const existing = await this.knex(this.table).where({ id }).first();
-    if (!existing) throw new NotFoundError("Registro não encontrado");
-
-    // prepare update filtering to table columns and merge metadata if present
-    const colsInfo = await this.knex(this.table).columnInfo();
-    const allowed = Object.keys(colsInfo || {});
-
-    let metadata = {};
-    if (allowed.includes('metadata')) {
-      try {
-        metadata = existing.metadata ? JSON.parse(existing.metadata) : {};
-      } catch (err) {
-        metadata = {};
-      }
-      metadata.updatedAt = new Date();
-    }
-
     const row = { ...data };
-    if (allowed.includes('metadata')) {
-      const incoming = row.metadata && typeof row.metadata !== 'string' ? row.metadata : (row.metadata ? JSON.parse(row.metadata) : {});
-      row.metadata = JSON.stringify({ ...metadata, ...incoming });
-    } else {
-      delete row.metadata;
+
+    // Mescla metadata preservando campos existentes
+    if (!row.metadata) {
+      // Busca metadata atual para mesclar updatedAt sem sobrescrever outros campos
+      const { data: existing } = await supabase
+        .from(this.table)
+        .select("metadata")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (existing) {
+        let meta = {};
+        try {
+          meta = existing.metadata ? JSON.parse(existing.metadata) : {};
+        } catch (_) {
+          meta = {};
+        }
+        meta.updatedAt = new Date().toISOString();
+        row.metadata = JSON.stringify(meta);
+      }
+    } else if (typeof row.metadata === "object") {
+      row.metadata = JSON.stringify({
+        ...row.metadata,
+        updatedAt: new Date().toISOString(),
+      });
     }
 
-    const updateRow = Object.fromEntries(Object.entries(row).filter(([k]) => allowed.includes(k)));
+    const { data: updated, error } = await supabase
+      .from(this.table)
+      .update(row)
+      .eq("id", id)
+      .select()
+      .single();
 
-    await this.knex(this.table).where({ id }).update(updateRow);
-    return this.findById(id);
+    if (error) {
+      if (error.code === "PGRST116") throw new NotFoundError("Registro não encontrado");
+      throw error;
+    }
+    return updated;
   }
 
+  /**
+   * Deleta um registro (soft-delete por padrão via coluna "deletedAt").
+   * @param {number} id
+   * @param {boolean} soft - true = soft-delete, false = hard-delete
+   * @returns {Promise<object|true>}
+   */
   async delete(id, soft = true) {
-    await this._ensureTable();
-    const existing = await this.knex(this.table).where({ id }).first();
-    if (!existing) throw new NotFoundError("Registro não encontrado");
-
     if (soft) {
-      // update metadata.deletedAt or metadata_deletedAt if exists
-      const hasCol = await this._hasMetadataDeletedColumn();
-      if (hasCol) {
-        await this.knex(this.table).where({ id }).update({ metadata_deletedAt: new Date() });
-        return this.findById(id).catch(() => null);
-      }
+      // Verifica existência antes de atualizar
+      const { data: existing, error: findErr } = await supabase
+        .from(this.table)
+        .select("id")
+        .eq("id", id)
+        .is("deletedAt", null)
+        .maybeSingle();
 
-      const hasMetadata = await this._hasMetadataColumn();
-      if (hasMetadata) {
-        let metadata;
-        try {
-          metadata = existing.metadata ? JSON.parse(existing.metadata) : {};
-        } catch (err) {
-          metadata = {};
-        }
-        metadata.deletedAt = new Date();
-        await this.knex(this.table).where({ id }).update({ metadata: JSON.stringify(metadata) });
-        return this.findById(id).catch(() => null);
-      }
+      if (findErr) throw findErr;
+      if (!existing) throw new NotFoundError("Registro não encontrado");
 
-      // No metadata support, fall back to hard delete
+      const { error } = await supabase
+        .from(this.table)
+        .update({ deletedAt: new Date().toISOString() })
+        .eq("id", id);
+
+      if (error) throw error;
+      return true;
     }
 
-    // hard delete
-    await this.knex(this.table).where({ id }).del();
+    // Hard-delete
+    const { error } = await supabase
+      .from(this.table)
+      .delete()
+      .eq("id", id);
+
+    if (error) throw error;
     return true;
   }
 
+  /**
+   * Verifica se existe ao menos um registro satisfazendo o filtro.
+   * @param {object} filter
+   * @returns {Promise<boolean>}
+   */
   async exists(filter) {
-    await this._ensureTable();
-    const qb = this.knex(this.table).where(filter).count({ count: '*' });
-    await this._applyNotDeleted(qb);
-    const res = await qb.first();
-    const c = res ? Number(res.count || res['count(*)'] || 0) : 0;
-    return c > 0;
+    const { count, error } = await this._runWithDeletedAtFallback((withDeletedAt) => {
+      let query = supabase
+        .from(this.table)
+        .select("id", { count: "exact", head: true });
+
+      query = this._applyFilters(query, filter);
+      if (withDeletedAt) {
+        query = this._applyNotDeleted(query);
+      }
+
+      return query;
+    });
+
+    if (error) throw error;
+    return (count ?? 0) > 0;
   }
 
+  /**
+   * Conta registros satisfazendo o filtro (excluindo soft-deletados).
+   * @param {object} filter
+   * @returns {Promise<number>}
+   */
   async count(filter = {}) {
-    await this._ensureTable();
-    const qb = this.knex(this.table).where(filter).count({ count: '*' });
-    await this._applyNotDeleted(qb);
-    const res = await qb.first();
-    return res ? Number(res.count || res['count(*)'] || 0) : 0;
+    const { count, error } = await this._runWithDeletedAtFallback((withDeletedAt) => {
+      let query = supabase
+        .from(this.table)
+        .select("*", { count: "exact", head: true });
+
+      query = this._applyFilters(query, filter);
+      if (withDeletedAt) {
+        query = this._applyNotDeleted(query);
+      }
+
+      return query;
+    });
+
+    if (error) throw error;
+    return count ?? 0;
+  }
+
+  // ── Helpers internos ───────────────────────────────────────────────────────
+
+  /**
+   * Aplica um objeto de filtros de igualdade em uma query supabase-js.
+   * Suporta valores null (usa .is() em vez de .eq()).
+   */
+  _applyFilters(query, filter = {}) {
+    for (const [key, val] of Object.entries(filter)) {
+      if (val === null || val === undefined) {
+        query = query.is(key, null);
+      } else {
+        query = query.eq(key, val);
+      }
+    }
+    return query;
+  }
+
+  /**
+   * Aplica ordenação em uma query supabase-js.
+   * Aceita:
+   *   - string: nome da coluna (asc implícito)
+   *   - objeto: { campo: 'asc'|'desc' } ou { campo: -1|1 } (legado Mongo-like)
+   */
+  _applySort(query, sort) {
+    if (!sort) return query;
+
+    if (typeof sort === "string") {
+      return query.order(sort, { ascending: true });
+    }
+
+    if (typeof sort === "object") {
+      const entries = Object.entries(sort);
+      for (const [key, dir] of entries) {
+        // Ignora campos JSON como 'metadata.createdAt' — usa created_at diretamente
+        if (key.includes(".")) {
+          const fallback = key.split(".").pop();
+          const col = ["createdAt", "updatedAt"].includes(fallback)
+            ? fallback.replace(/([A-Z])/g, "_$1").toLowerCase() // createdAt → created_at
+            : "created_at";
+          query = query.order(col, { ascending: dir !== "desc" && dir !== -1 });
+        } else {
+          query = query.order(key, { ascending: dir !== "desc" && dir !== -1 });
+        }
+      }
+    }
+
+    return query;
   }
 }
 

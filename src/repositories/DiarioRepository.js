@@ -6,62 +6,76 @@ class DiarioRepository extends BaseRepository {
   }
 
   async findBySyncId(syncId) {
-    return await this.findOne({ syncId });
+    return this.findOne({ syncId });
   }
 
   async findByObra(obraId, options = {}) {
-    return await this.findAll({ obra: obraId }, options);
+    return this.findAll({ obra: obraId }, options);
   }
 
+  /**
+   * Busca o diário de um dia específico de uma obra.
+   * Filtra por intervalo [00:00:00, 23:59:59] da data informada.
+   */
   async findByData(obraId, data) {
-    await this._ensureTable();
-    const iniciodia = new Date(data);
-    iniciodia.setHours(0, 0, 0, 0);
-    const fimDia = new Date(data);
-    fimDia.setHours(23, 59, 59, 999);
+    const inicio = new Date(data);
+    inicio.setHours(0, 0, 0, 0);
+    const fim = new Date(data);
+    fim.setHours(23, 59, 59, 999);
 
-    const qb = this.knex(this.table)
-      .where({ obra: obraId })
-      .andWhere("data", ">=", iniciodia.toISOString())
-      .andWhere("data", "<=", fimDia.toISOString());
-    await this._applyNotDeleted(qb);
-    return (await qb.first()) || null;
+    const { data: rows, error } = await this._runWithDeletedAtFallback((withDeletedAt) => {
+      let query = this.supabase
+        .from(this.table)
+        .select("*")
+        .eq("obra", obraId)
+        .gte("data", inicio.toISOString())
+        .lte("data", fim.toISOString());
+
+      if (withDeletedAt) {
+        query = query.is("deletedAt", null);
+      }
+
+      return query.maybeSingle();
+    });
+
+    if (error) throw error;
+    return rows ?? null;
   }
 
+  /**
+   * Busca diários em um intervalo de datas, ordenados por data asc.
+   */
   async findByPeriodo(obraId, dataInicio, dataFim, options = {}) {
-    await this._ensureTable();
     const { page = 1, limit = 20 } = options;
     const offset = (page - 1) * limit;
-    const inicio = new Date(dataInicio).toISOString();
-    const fim = new Date(dataFim).toISOString();
 
-    const countQb = this.knex(this.table)
-      .where({ obra: obraId })
-      .andWhere("data", ">=", inicio)
-      .andWhere("data", "<=", fim)
-      .count({ count: "*" });
-    await this._applyNotDeleted(countQb);
-    const totalRes = await countQb.first();
-    const total = totalRes ? Number(totalRes.count || 0) : 0;
+    const { data, error, count } = await this._runWithDeletedAtFallback((withDeletedAt) => {
+      let query = this.supabase
+        .from(this.table)
+        .select("*", { count: "exact" })
+        .eq("obra", obraId)
+        .gte("data", new Date(dataInicio).toISOString())
+        .lte("data", new Date(dataFim).toISOString());
 
-    const dataQb = this.knex(this.table)
-      .where({ obra: obraId })
-      .andWhere("data", ">=", inicio)
-      .andWhere("data", "<=", fim)
-      .orderBy("data", "asc")
-      .limit(limit)
-      .offset(offset);
-    await this._applyNotDeleted(dataQb);
-    const rows = await dataQb;
-    return { data: rows, total, page, limit };
+      if (withDeletedAt) {
+        query = query.is("deletedAt", null);
+      }
+
+      return query
+        .order("data", { ascending: true })
+        .range(offset, offset + limit - 1);
+    });
+
+    if (error) throw error;
+    return { data: data ?? [], total: count ?? 0, page, limit };
   }
 
   async findPendentes(options = {}) {
-    return await this.findAll({ sincronizado: false }, options);
+    return this.findAll({ sincronizado: false }, options);
   }
 
   async markAsSynced(diarioId) {
-    return await this.update(diarioId, { sincronizado: true });
+    return this.update(diarioId, { sincronizado: true });
   }
 
   async addOcorrencia(diarioId, ocorrencia) {
@@ -69,12 +83,11 @@ class DiarioRepository extends BaseRepository {
     let ocorrencias;
     try {
       ocorrencias = diario.ocorrencias ? JSON.parse(diario.ocorrencias) : [];
-    } catch (err) {
+    } catch (_) {
       ocorrencias = [];
     }
     ocorrencias.push(ocorrencia);
-    await this.update(diarioId, { ocorrencias: JSON.stringify(ocorrencias) });
-    return await this.findById(diarioId);
+    return this.update(diarioId, { ocorrencias: JSON.stringify(ocorrencias) });
   }
 
   async addVisitante(diarioId, visitante) {
@@ -82,12 +95,11 @@ class DiarioRepository extends BaseRepository {
     let visitantes;
     try {
       visitantes = diario.visitantes ? JSON.parse(diario.visitantes) : [];
-    } catch (err) {
+    } catch (_) {
       visitantes = [];
     }
     visitantes.push(visitante);
-    await this.update(diarioId, { visitantes: JSON.stringify(visitantes) });
-    return await this.findById(diarioId);
+    return this.update(diarioId, { visitantes: JSON.stringify(visitantes) });
   }
 }
 

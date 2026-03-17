@@ -6,43 +6,59 @@ class SolicitacaoCompraRepository extends BaseRepository {
   }
 
   async findBySyncId(syncId) {
-    return await this.findOne({ syncId });
+    return this.findOne({ syncId });
   }
 
   async findByObra(obraId, options = {}) {
-    return await this.findAll({ obra: obraId }, options);
+    return this.findAll({ obra: obraId }, options);
   }
 
   async findBySolicitante(userId, options = {}) {
-    return await this.findAll({ solicitante: userId }, options);
+    return this.findAll({ solicitante: userId }, options);
   }
 
   async findByStatus(status, options = {}) {
-    return await this.findAll({ status }, options);
+    return this.findAll({ status }, options);
   }
 
   async findPendentes(options = {}) {
-    return await this.findAll({ sincronizado: false }, options);
+    return this.findAll({ sincronizado: false }, options);
   }
 
   async findByPrioridade(prioridade, options = {}) {
-    return await this.findAll({ prioridade, status: "pendente" }, { ...options, sort: { dataNecessidade: 1 } });
+    return this.findAll(
+      { prioridade, status: "pendente" },
+      { ...options, sort: { dataNecessidade: "asc" } },
+    );
   }
 
   async aprovar(solicitacaoId, aprovadoPor) {
-    return await this.update(solicitacaoId, { status: "aprovada", aprovadoPor, dataAprovacao: new Date() });
+    return this.update(solicitacaoId, {
+      status: "aprovada",
+      aprovadoPor,
+      dataAprovacao: new Date().toISOString(),
+    });
   }
 
   async rejeitar(solicitacaoId, motivoRejeicao, aprovadoPor) {
-    return await this.update(solicitacaoId, { status: "rejeitada", aprovadoPor, motivoRejeicao, dataAprovacao: new Date() });
+    return this.update(solicitacaoId, {
+      status: "rejeitada",
+      aprovadoPor,
+      motivoRejeicao,
+      dataAprovacao: new Date().toISOString(),
+    });
   }
 
   async concluir(solicitacaoId, dados) {
-    return await this.update(solicitacaoId, { status: "concluida", dataConclusao: new Date(), ...dados });
+    return this.update(solicitacaoId, {
+      status: "concluida",
+      dataConclusao: new Date().toISOString(),
+      ...dados,
+    });
   }
 
   async markAsSynced(solicitacaoId) {
-    return await this.update(solicitacaoId, { sincronizado: true });
+    return this.update(solicitacaoId, { sincronizado: true });
   }
 }
 

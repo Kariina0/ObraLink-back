@@ -4,8 +4,20 @@ const { authenticate, authorize } = require("../middleware/auth");
 const { asyncHandler } = require("../middleware/errorHandler");
 const { successResponse } = require("../utils/helpers");
 const { PERFIS } = require("../constants");
-// db carregado lazily dentro do handler para garantir que a conexão já foi estabelecida
-const getKnex = () => require("../config/database").knex;
+const supabase = require("../config/supabaseClient");
+
+function isMissingDeletedAtColumn(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return message.includes("deletedat") && message.includes("does not exist");
+}
+
+async function runWithDeletedAtFallback(buildQuery) {
+  const firstTry = await buildQuery(true);
+  if (!firstTry.error || !isMissingDeletedAtColumn(firstTry.error)) {
+    return firstTry;
+  }
+  return buildQuery(false);
+}
 
 // Importar rotas
 const authRoutes = require("./auth");
@@ -17,10 +29,11 @@ const solicitacoesRoutes = require("./solicitacoes");
 const diariosRoutes = require("./diarios");
 const managementRoutes = require("./management");
 
-// Rota de health check — verifica conectividade com o banco (I-3)
+// Rota de health check — verifica conectividade com o banco via Supabase
 router.get("/health", asyncHandler(async (req, res) => {
   try {
-    await getKnex().raw("SELECT 1");
+    const { error } = await supabase.from("users").select("id").limit(1);
+    if (error) throw error;
     res.json({ status: "ok", db: "connected", timestamp: new Date().toISOString() });
   } catch (err) {
     res.status(503).json({ status: "error", db: "disconnected", timestamp: new Date().toISOString() });
@@ -29,7 +42,7 @@ router.get("/health", asyncHandler(async (req, res) => {
 
 /**
  * @route GET /api/stats
- * @desc Estatísticas reais do sistema via COUNT SQL (sem carregar todos os registros)
+ * @desc Estatísticas reais do sistema via Supabase (COUNT sem carregar registros)
  * @access Admin, Supervisor
  */
 router.get(
@@ -37,38 +50,71 @@ router.get(
   authenticate,
   authorize(PERFIS.ADMIN, PERFIS.SUPERVISOR),
   asyncHandler(async (req, res) => {
-    const knex = getKnex();
+    // Usa a view v_stats criada em scripts/supabase_rls_auth.sql
+    // para evitar múltiplas roundtrips ao BD
+    const { data, error } = await supabase
+      .from("v_stats")
+      .select("*")
+      .single();
 
-    const [
-      totalObras,
-      totalMedicoes,
-      medicoesPendentes,
-      medicoesAprovadas,
-      totalSolicitacoes,
-      solicitacoesPendentes,
-      totalArquivos,
-    ] = await Promise.all([
-      knex("obras").count("id as c").first(),
-      knex("medicoes").count("id as c").first(),
-      knex("medicoes").where("status", "enviada").count("id as c").first(),
-      knex("medicoes").where("status", "aprovada").count("id as c").first(),
-      knex("solicitacoes_compra").count("id as c").first(),
-      knex("solicitacoes_compra").where("status", "pendente").count("id as c").first(),
-      knex("arquivos").count("id as c").first(),
-    ]);
+    if (error) {
+      // Fallback: queries individuais caso a view não exista ainda
+      const countWithSoftDeleteFallback = async (table, status = null) => {
+        const result = await runWithDeletedAtFallback((withDeletedAt) => {
+          let query = supabase
+            .from(table)
+            .select("*", { count: "exact", head: true });
 
-    const toNum = (r) => Number(r?.c || r?.["count(`id`)"] || r?.["count(id)"] || 0);
+          if (withDeletedAt) {
+            query = query.is("deletedAt", null);
+          }
+
+          if (status) {
+            query = query.eq("status", status);
+          }
+
+          return query;
+        });
+
+        return result.count ?? 0;
+      };
+
+      const counts = await Promise.all([
+        countWithSoftDeleteFallback("obras"),
+        countWithSoftDeleteFallback("medicoes"),
+        countWithSoftDeleteFallback("medicoes", "enviada"),
+        countWithSoftDeleteFallback("medicoes", "aprovada"),
+        countWithSoftDeleteFallback("solicitacoes_compra"),
+        countWithSoftDeleteFallback("solicitacoes_compra", "pendente"),
+        countWithSoftDeleteFallback("arquivos"),
+      ]);
+
+      return res.json(
+        successResponse(
+          {
+            totalObras:              counts[0] ?? 0,
+            totalMedicoes:           counts[1] ?? 0,
+            medicoesPendentes:       counts[2] ?? 0,
+            medicoesAprovadas:       counts[3] ?? 0,
+            totalSolicitacoes:       counts[4] ?? 0,
+            solicitacoesPendentes:   counts[5] ?? 0,
+            totalArquivos:           counts[6] ?? 0,
+          },
+          "Estatísticas carregadas",
+        ),
+      );
+    }
 
     res.json(
       successResponse(
         {
-          totalObras: toNum(totalObras),
-          totalMedicoes: toNum(totalMedicoes),
-          medicoesPendentes: toNum(medicoesPendentes),
-          medicoesAprovadas: toNum(medicoesAprovadas),
-          totalSolicitacoes: toNum(totalSolicitacoes),
-          solicitacoesPendentes: toNum(solicitacoesPendentes),
-          totalArquivos: toNum(totalArquivos),
+          totalObras:            Number(data.total_obras          ?? 0),
+          totalMedicoes:         Number(data.total_medicoes        ?? 0),
+          medicoesPendentes:     Number(data.medicoes_pendentes    ?? 0),
+          medicoesAprovadas:     Number(data.medicoes_aprovadas    ?? 0),
+          totalSolicitacoes:     Number(data.total_solicitacoes    ?? 0),
+          solicitacoesPendentes: Number(data.solicitacoes_pendentes ?? 0),
+          totalArquivos:         Number(data.total_arquivos        ?? 0),
         },
         "Estatísticas carregadas",
       ),

@@ -6,51 +6,76 @@ class UserRepository extends BaseRepository {
   }
 
   async findByEmail(email) {
-    await this._ensureTable();
-    const qb = this.knex(this.table).where({ email });
-    await this._applyNotDeleted(qb);
-    return await qb.first();
+    const { data, error } = await this.supabase
+      .from(this.table)
+      .select("*")
+      .eq("email", email)
+      .is("deletedAt", null)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data ?? null;
+  }
+
+  async findByAuthId(authId) {
+    const { data, error } = await this.supabase
+      .from(this.table)
+      .select("*")
+      .eq("auth_id", authId)
+      .is("deletedAt", null)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) {
+      const { NotFoundError } = require("../utils/errors");
+      throw new NotFoundError("Usuário não encontrado");
+    }
+    return data;
   }
 
   async findBySyncId(syncId) {
-    return await this.findOne({ syncId });
+    return this.findOne({ syncId });
   }
 
   async updateRefreshToken(userId, refreshToken) {
-    return await this.update(userId, { refreshToken });
+    return this.update(userId, { refreshToken });
   }
 
   async clearRefreshToken(userId) {
-    return await this.update(userId, { refreshToken: null });
+    return this.update(userId, { refreshToken: null });
   }
 
   async findByObraAtual(obraId, options = {}) {
-    return await this.findAll({ obraAtual: obraId }, options);
+    return this.findAll({ obraAtual: obraId }, options);
   }
 
   async updateLastSync(userId) {
-    return await this.update(userId, { lastSync: new Date() });
+    return this.update(userId, { lastSync: new Date().toISOString() });
   }
 
+  /**
+   * Exportação de dados pessoais (LGPD).
+   * Remove campos sensíveis (senha, refreshToken) antes de retornar.
+   */
   async exportUserData(userId) {
-    await this._ensureTable();
     const rawUser = await this.findById(userId);
 
-    // I-5: Remove campos sensíveis antes de exportar — hash de senha e refreshToken
-    // não são dados do usuário e não devem constar em exportações LGPD.
-    const { senha, refreshToken, ...safeUser } = rawUser;
+    // Remove campos sensíveis — não devem constar em exportações LGPD
+    const { senha, refreshToken, resetPasswordToken, ...safeUser } = rawUser;
 
-    const medicoes = await this.knex("medicoes").where({ responsavel: userId }).andWhereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)");
-    const diarios = await this.knex("diarios").where({ responsavel: userId }).andWhereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)");
-    const solicitacoes = await this.knex("solicitacoes_compra").where({ solicitante: userId }).andWhereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)");
-    const arquivos = await this.knex("arquivos").where({ uploadedBy: userId }).andWhereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)");
+    const [medicoes, diarios, solicitacoes, arquivos] = await Promise.all([
+      this.supabase.from("medicoes").select("*").eq("responsavel", userId).is("deletedAt", null),
+      this.supabase.from("diarios").select("*").eq("responsavel", userId).is("deletedAt", null),
+      this.supabase.from("solicitacoes_compra").select("*").eq("solicitante", userId).is("deletedAt", null),
+      this.supabase.from("arquivos").select("*").eq("uploadedBy", userId).is("deletedAt", null),
+    ]);
 
     return {
       usuario: safeUser,
-      medicoes,
-      diarios,
-      solicitacoes,
-      arquivos,
+      medicoes: medicoes.data ?? [],
+      diarios: diarios.data ?? [],
+      solicitacoes: solicitacoes.data ?? [],
+      arquivos: arquivos.data ?? [],
     };
   }
 }

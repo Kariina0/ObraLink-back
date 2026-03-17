@@ -6,129 +6,151 @@ class ObraRepository extends BaseRepository {
   }
 
   async findByCodigo(codigo) {
-    await this._ensureTable();
-    const qb = this.knex(this.table).where({ codigo });
-    await this._applyNotDeleted(qb);
-    return await qb.first();
+    const { data, error } = await this.supabase
+      .from(this.table)
+      .select("*")
+      .eq("codigo", codigo)
+      .is("deletedAt", null)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data ?? null;
   }
 
   async findBySyncId(syncId) {
-    return await this.findOne({ syncId });
+    return this.findOne({ syncId });
   }
 
   async findByResponsavel(userId, options = {}) {
-    return await this.findAll({ responsavel: userId }, options);
+    return this.findAll({ responsavel: userId }, options);
   }
 
   // ── N:N encarregado ──────────────────────────────────────────────────────
 
   /**
-   * Retorna as obras às quais userId está vinculado como encarregado
-   * usando a tabela obra_encarregados.
+   * Retorna as obras às quais userId está vinculado como encarregado.
+   * Usa obra_encarregados. Fallback para obraAtual do usuário se não houver vínculo.
    */
   async findByEncarregado(userId, options = {}) {
     const { page = 1, limit = 20, status } = options;
     const offset = (page - 1) * limit;
-    const hasTable = await this.knex.schema.hasTable("obra_encarregados");
 
-    if (hasTable) {
-      let qb = this.knex("obras")
-        .join("obra_encarregados", "obras.id", "obra_encarregados.obraId")
-        .where("obra_encarregados.userId", userId)
-        .whereRaw("(obras.metadata IS NULL OR (obras.metadata::jsonb)->>'deletedAt' IS NULL)");
+    // Busca IDs de obras via obra_encarregados
+    const { data: vinculos } = await this.supabase
+      .from("obra_encarregados")
+      .select("obraId")
+      .eq("userId", userId);
 
-      if (status) qb = qb.andWhere("obras.status", status);
+    const obraIds = (vinculos ?? []).map((v) => v.obraId);
 
-      const countQb = qb.clone().count({ count: "*" });
-      const totalRes = await countQb.first();
-      const total = totalRes ? Number(totalRes.count || totalRes["count(*)"] || 0) : 0;
+    if (obraIds.length > 0) {
+      let query = this.supabase
+        .from(this.table)
+        .select("*", { count: "exact" })
+        .in("id", obraIds)
+        .is("deletedAt", null);
 
-      if (total > 0) {
-        const data = await qb.select("obras.*").limit(limit).offset(offset);
-        return { data, total, page, limit };
-      }
+      if (status) query = query.eq("status", status);
+      query = query.range(offset, offset + limit - 1).order("created_at", { ascending: false });
+
+      const { data, error, count } = await query;
+      if (error) throw error;
+      return { data: data ?? [], total: count ?? 0, page, limit };
     }
 
     // Fallback: usar obraAtual do registro do usuário
-    const user = await this.knex("users").where({ id: userId }).first();
-    if (!user || !user.obraAtual) {
+    const { data: user } = await this.supabase
+      .from("users")
+      .select("obraAtual")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (!user?.obraAtual) {
       return { data: [], total: 0, page, limit };
     }
 
-    let qbFallback = this.knex("obras")
-      .where("obras.id", user.obraAtual)
-      .whereRaw("(obras.metadata IS NULL OR (obras.metadata::jsonb)->>'deletedAt' IS NULL)");
+    let fallbackQuery = this.supabase
+      .from(this.table)
+      .select("*", { count: "exact" })
+      .eq("id", user.obraAtual)
+      .is("deletedAt", null);
 
-    if (status) qbFallback = qbFallback.andWhere("obras.status", status);
+    if (status) fallbackQuery = fallbackQuery.eq("status", status);
+    fallbackQuery = fallbackQuery.range(offset, offset + limit - 1);
 
-    const data = await qbFallback.select("obras.*").limit(limit).offset(offset);
-    return { data, total: data.length, page, limit };
+    const { data: fallbackData, error: fallbackErr, count: fallbackCount } = await fallbackQuery;
+    if (fallbackErr) throw fallbackErr;
+    return { data: fallbackData ?? [], total: fallbackCount ?? 0, page, limit };
   }
 
   /**
-   * Verifica se um usuário está vinculado a uma obra.
+   * Verifica se um usuário está vinculado a uma obra como encarregado.
+   * Fallback para obraAtual do usuário.
    */
   async isEncarregadoVinculado(obraId, userId) {
-    const hasTable = await this.knex.schema.hasTable("obra_encarregados");
-    if (hasTable) {
-      const row = await this.knex("obra_encarregados")
-        .where({ obraId, userId })
-        .first();
-      if (row) return true;
-    }
-    // Fallback: verificar obraAtual do usuário
-    const user = await this.knex("users").where({ id: userId, obraAtual: obraId }).first();
-    return Boolean(user);
+    const { data: vinculo } = await this.supabase
+      .from("obra_encarregados")
+      .select("id")
+      .eq("obraId", Number(obraId))
+      .eq("userId", Number(userId))
+      .maybeSingle();
+
+    if (vinculo) return true;
+
+    // Fallback: verifica obraAtual
+    const { data: user } = await this.supabase
+      .from("users")
+      .select("obraAtual")
+      .eq("id", userId)
+      .maybeSingle();
+
+    return Number(user?.obraAtual) === Number(obraId);
   }
 
   /**
-   * Vincula um encarregado a uma obra (N:N).
+   * Vincula um encarregado a uma obra (upsert — idempotente).
    */
   async vincularEncarregado(obraId, userId, funcao = "encarregado") {
-    const hasTable = await this.knex.schema.hasTable("obra_encarregados");
-    if (!hasTable) throw new Error("Tabela obra_encarregados não existe. Execute as migrations.");
+    const { error } = await this.supabase
+      .from("obra_encarregados")
+      .upsert(
+        { obraId: Number(obraId), userId: Number(userId), funcao, dataInclusao: new Date().toISOString() },
+        { onConflict: "obraId,userId", ignoreDuplicates: true },
+      );
 
-    const jaExiste = await this.knex("obra_encarregados")
-      .where({ obraId, userId })
-      .first();
-    if (!jaExiste) {
-      await this.knex("obra_encarregados").insert({
-        obraId,
-        userId,
-        funcao,
-        dataInclusao: new Date(),
-      });
-    }
-    return await this.findById(obraId);
+    if (error) throw error;
+    return this.findById(obraId);
   }
 
   /**
    * Desvincula um encarregado de uma obra.
    */
   async desvincularEncarregado(obraId, userId) {
-    const hasTable = await this.knex.schema.hasTable("obra_encarregados");
-    if (!hasTable) return;
-    await this.knex("obra_encarregados").where({ obraId, userId }).delete();
-    return await this.findById(obraId);
+    const numObraId = Number(obraId);
+    const numUserId = Number(userId);
+    if (!numObraId || !numUserId) {
+      throw new Error("obraId e userId devem ser números válidos");
+    }
+    const { error } = await this.supabase
+      .from("obra_encarregados")
+      .delete()
+      .eq("obraId", numObraId)
+      .eq("userId", numUserId);
+
+    if (error) throw error;
+    return this.findById(obraId);
   }
 
   /**
-   * Lista os encarregados vinculados a uma obra.
+   * Lista os encarregados vinculados a uma obra usando RPC com JOIN.
+   * Usa stored procedure listar_encarregados definida em supabase_rls_auth.sql.
    */
   async listarEncarregados(obraId) {
-    const hasTable = await this.knex.schema.hasTable("obra_encarregados");
-    if (!hasTable) return [];
-    return await this.knex("obra_encarregados")
-      .join("users", "obra_encarregados.userId", "users.id")
-      .where("obra_encarregados.obraId", obraId)
-      .select(
-        "users.id",
-        "users.nome",
-        "users.email",
-        "users.perfil",
-        "obra_encarregados.funcao",
-        "obra_encarregados.dataInclusao",
-      );
+    const { data, error } = await this.supabase.rpc("listar_encarregados", {
+      p_obra_id: Number(obraId),
+    });
+    if (error) throw error;
+    return data ?? [];
   }
 
   /**
@@ -138,39 +160,60 @@ class ObraRepository extends BaseRepository {
    */
   async listarEncarregadosBatch(obraIds) {
     if (!obraIds || obraIds.length === 0) return {};
-    const hasTable = await this.knex.schema.hasTable("obra_encarregados");
-    if (!hasTable) return {};
-    const rows = await this.knex("obra_encarregados")
-      .join("users", "obra_encarregados.userId", "users.id")
-      .whereIn("obra_encarregados.obraId", obraIds)
-      .select(
-        "obra_encarregados.obraId",
-        "users.id",
-        "users.nome",
-        "users.email",
-        "users.perfil",
-        "obra_encarregados.funcao",
-        "obra_encarregados.dataInclusao",
-      );
+
+    const { data, error } = await this.supabase
+      .from("obra_encarregados")
+      .select("obraId, userId, funcao, dataInclusao, users(id, nome, email, perfil)")
+      .in("obraId", obraIds);
+
+    if (error) throw error;
+
     const result = {};
-    for (const row of rows) {
-      const { obraId, ...enc } = row;
+    for (const row of data ?? []) {
+      const { obraId, users: u, ...enc } = row;
       if (!result[obraId]) result[obraId] = [];
-      result[obraId].push(enc);
+      result[obraId].push({ ...enc, id: u?.id, nome: u?.nome, email: u?.email, perfil: u?.perfil });
     }
     return result;
   }
 
-  // ── helpers ──────────────────────────────────────────────────────────────
+  /**
+   * Retorna usuários ativos ainda não vinculados à obra como encarregados.
+   * Usado para popular o seletor de adição de encarregados no frontend.
+   */
+  async listarDisponiveisParaObra(obraId) {
+    const { data: vinculos } = await this.supabase
+      .from("obra_encarregados")
+      .select("userId")
+      .eq("obraId", Number(obraId));
+
+    const linkedIds = (vinculos ?? []).map((v) => v.userId);
+
+    let query = this.supabase
+      .from("users")
+      .select("id, nome, email, perfil")
+      .is("deletedAt", null)
+      .order("nome", { ascending: true });
+
+    if (linkedIds.length > 0) {
+      query = query.not("id", "in", `(${linkedIds.join(",")})`);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  // ── helpers ────────────────────────────────────────────────────────────────
 
   async findByEquipeMembro(userId, options = {}) {
-    // equipe stored as JSON: filter client-side (legado)
+    // equipe armazenada como JSON TEXT — filtro client-side (legado)
     const all = await this.findAll({}, { ...options, limit: 500 });
     const data = all.data.filter((o) => {
       try {
         const equipe = o.equipe ? JSON.parse(o.equipe) : [];
         return equipe.some((m) => String(m.usuario) === String(userId));
-      } catch (err) {
+      } catch (_) {
         return false;
       }
     });
@@ -182,17 +225,16 @@ class ObraRepository extends BaseRepository {
     let equipe;
     try {
       equipe = obra.equipe ? JSON.parse(obra.equipe) : [];
-    } catch (err) {
+    } catch (_) {
       equipe = [];
     }
 
     const jaExiste = equipe.some((m) => String(m.usuario) === String(userId));
     if (!jaExiste) {
-      equipe.push({ usuario: userId, funcao, dataInclusao: new Date() });
+      equipe.push({ usuario: userId, funcao, dataInclusao: new Date().toISOString() });
       await this.update(obraId, { equipe: JSON.stringify(equipe) });
     }
-
-    return await this.findById(obraId);
+    return this.findById(obraId);
   }
 
   async removeMembroEquipe(obraId, userId) {
@@ -200,17 +242,17 @@ class ObraRepository extends BaseRepository {
     let equipe;
     try {
       equipe = obra.equipe ? JSON.parse(obra.equipe) : [];
-    } catch (err) {
+    } catch (_) {
       equipe = [];
     }
 
     equipe = equipe.filter((m) => String(m.usuario) !== String(userId));
     await this.update(obraId, { equipe: JSON.stringify(equipe) });
-    return await this.findById(obraId);
+    return this.findById(obraId);
   }
 
   async updateStatus(obraId, status) {
-    return await this.update(obraId, { status });
+    return this.update(obraId, { status });
   }
 
   async updateOrcamento(obraId, valorGasto) {
@@ -218,16 +260,15 @@ class ObraRepository extends BaseRepository {
     let orcamento;
     try {
       orcamento = obra.orcamento ? JSON.parse(obra.orcamento) : {};
-    } catch (err) {
+    } catch (_) {
       orcamento = {};
     }
     orcamento.valorGasto = (orcamento.valorGasto || 0) + valorGasto;
-    await this.update(obraId, { orcamento: JSON.stringify(orcamento) });
-    return await this.findById(obraId);
+    return this.update(obraId, { orcamento: JSON.stringify(orcamento) });
   }
 
   async getObrasPorStatus(status, options = {}) {
-    return await this.findAll({ status }, options);
+    return this.findAll({ status }, options);
   }
 }
 

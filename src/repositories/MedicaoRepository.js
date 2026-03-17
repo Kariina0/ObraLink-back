@@ -6,125 +6,156 @@ class MedicaoRepository extends BaseRepository {
   }
 
   async findBySyncId(syncId) {
-    return await this.findOne({ syncId });
+    return this.findOne({ syncId });
   }
 
   async findByObra(obraId, options = {}) {
-    return await this.findAll({ obra: obraId }, options);
+    return this.findAll({ obra: obraId }, options);
   }
 
   async findByResponsavel(userId, options = {}) {
-    return await this.findAll({ responsavel: userId }, options);
+    return this.findAll({ responsavel: userId }, options);
   }
 
   /**
    * Busca medições de um responsável com filtros opcionais.
-   * Suporta: obra, status, tipoServico, area, dataInicio, dataFim.
-   * Usado pelo endpoint GET /api/measurements/minhas com query params de filtro.
    */
   async findByResponsavelFiltered(userId, filters = {}, options = {}) {
-    // Reutiliza findAllFiltered passando responsavel fixo
-    return await this.findAllFiltered(
-      { ...filters, responsavel: userId },
-      options,
-    );
+    return this.findAllFiltered({ ...filters, responsavel: userId }, options);
   }
 
   async findPendentes(options = {}) {
-    return await this.findAll({ sincronizado: false }, options);
+    return this.findAll({ sincronizado: false }, options);
   }
 
   /**
-   * Busca com filtros opcionais: obra, responsavel, status, dataInicio, dataFim.
-   * Faz JOIN com obras e users para retornar nomes legíveis.
-   * Funciona via query params no back-end.
+   * Busca filtrada com JOINs via RPC get_medicoes_filtered (definida em supabase_rls_auth.sql).
+   * Mantém obraNome e responsavelNome no payload — compatibilidade com frontend.
    */
   async findAllFiltered(filters = {}, options = {}) {
     const { page = 1, limit = 10 } = options;
+
+    const params = {
+      p_page:         page,
+      p_limit:        limit,
+      p_obra:         filters.obra         ? Number(filters.obra)        : null,
+      p_responsavel:  filters.responsavel  ? Number(filters.responsavel) : null,
+      p_status:       filters.status       ?? null,
+      p_area:         filters.area         ?? null,
+      p_tipo_servico: filters.tipoServico  ?? null,
+      p_data_inicio:  filters.dataInicio ? new Date(filters.dataInicio).toISOString() : null,
+      p_data_fim:     filters.dataFim    ? new Date(filters.dataFim).toISOString()    : null,
+    };
+
+    const { data, error } = await this.supabase.rpc("get_medicoes_filtered", params);
+    if (!error) {
+      const total = data?.length > 0 ? Number(data[0].total_count ?? 0) : 0;
+      // Remove total_count do payload (campo interno de paginação)
+      const rows = (data ?? []).map(({ total_count, ...row }) => row);
+      return { data: rows, total, page, limit };
+    }
+
+    // Fallback para ambientes em que a RPC ainda não foi criada no Supabase.
+    const rpcMissing = String(error.message || "").includes("get_medicoes_filtered")
+      && String(error.message || "").includes("schema cache");
+    if (!rpcMissing) {
+      throw error;
+    }
+
     const offset = (page - 1) * limit;
+    let query = this.supabase
+      .from(this.table)
+      .select("*", { count: "exact" })
+      .is("deletedAt", null);
 
-    let qb = this.knex("medicoes")
-      // JOIN opcional com obras para obter o nome da obra
-      .leftJoin("obras", "medicoes.obra", "obras.id")
-      // JOIN opcional com users para obter o nome do responsável
-      .leftJoin("users", "medicoes.responsavel", "users.id")
-      .whereRaw(this._notDeletedCondition("medicoes"));
-
-    if (filters.obra) qb = qb.andWhere("medicoes.obra", Number(filters.obra));
-    if (filters.responsavel) qb = qb.andWhere("medicoes.responsavel", Number(filters.responsavel));
-    if (filters.status) qb = qb.andWhere("medicoes.status", filters.status);
-    if (filters.area) qb = qb.andWhere("medicoes.area", filters.area);
-    if (filters.tipoServico) qb = qb.andWhere("medicoes.tipoServico", filters.tipoServico);
-
+    if (filters.obra) {
+      query = query.eq("obra", Number(filters.obra));
+    }
+    if (filters.responsavel) {
+      query = query.eq("responsavel", Number(filters.responsavel));
+    }
+    if (filters.status) {
+      query = query.eq("status", filters.status);
+    }
+    if (filters.area) {
+      query = query.eq("area", filters.area);
+    }
+    if (filters.tipoServico) {
+      query = query.eq("tipoServico", filters.tipoServico);
+    }
     if (filters.dataInicio) {
-      qb = qb.andWhere("medicoes.data", ">=", new Date(filters.dataInicio).toISOString());
+      const dataInicioIso = new Date(filters.dataInicio).toISOString();
+      query = query.gte("data", dataInicioIso);
     }
     if (filters.dataFim) {
-      qb = qb.andWhere("medicoes.data", "<=", new Date(filters.dataFim).toISOString());
+      const dataFimIso = new Date(filters.dataFim).toISOString();
+      query = query.lte("data", dataFimIso);
     }
 
-    const countQb = qb.clone().count({ count: "*" });
-    const totalRes = await countQb.first();
-    const total = totalRes ? Number(totalRes.count || totalRes["count(*)"] || 0) : 0;
+    query = query.order("created_at", { ascending: false }).range(offset, offset + limit - 1);
 
-    const data = await qb
-      .select(
-        "medicoes.*",
-        // Campos enriquecidos: nome da obra e do responsável para exibição nos relatórios
-        "obras.nome as obraNome",
-        "users.nome as responsavelNome",
-      )
-      .orderBy("medicoes.created_at", "desc")
-      .limit(limit)
-      .offset(offset);
+    const { data: rawRows, error: fallbackError, count } = await query;
+    if (fallbackError) throw fallbackError;
 
-    return { data, total, page, limit };
+    const rows = rawRows ?? [];
+    const obraIds = [...new Set(rows.map((r) => r.obra).filter(Boolean))];
+    const responsavelIds = [...new Set(rows.map((r) => r.responsavel).filter(Boolean))];
+
+    const [obrasRes, usersRes] = await Promise.all([
+      obraIds.length
+        ? this.supabase.from("obras").select("id,nome").in("id", obraIds)
+        : Promise.resolve({ data: [], error: null }),
+      responsavelIds.length
+        ? this.supabase.from("users").select("id,nome").in("id", responsavelIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (obrasRes.error) throw obrasRes.error;
+    if (usersRes.error) throw usersRes.error;
+
+    const obraById = new Map((obrasRes.data ?? []).map((o) => [Number(o.id), o.nome]));
+    const userById = new Map((usersRes.data ?? []).map((u) => [Number(u.id), u.nome]));
+
+    const enrichedRows = rows.map((row) => ({
+      ...row,
+      obraNome: obraById.get(Number(row.obra)) ?? null,
+      responsavelNome: userById.get(Number(row.responsavel)) ?? null,
+    }));
+
+    return { data: enrichedRows, total: count ?? 0, page, limit };
   }
 
   async findByPeriodo(obraId, dataInicio, dataFim, options = {}) {
-    return await this.findAllFiltered(
-      { obra: obraId, dataInicio, dataFim },
-      options,
-    );
+    return this.findAllFiltered({ obra: obraId, dataInicio, dataFim }, options);
   }
 
   async updateStatus(medicaoId, status, aprovadoPor = null, motivoRejeicao = null) {
-    const update = { status };
+    const patch = { status };
     if (status === "aprovada" && aprovadoPor) {
-      update.aprovadoPor = aprovadoPor;
-      update.dataAprovacao = new Date();
+      patch.aprovadoPor = aprovadoPor;
+      patch.dataAprovacao = new Date().toISOString();
     }
     if (status === "rejeitada" && motivoRejeicao) {
-      update.motivoRejeicao = motivoRejeicao;
+      patch.motivoRejeicao = motivoRejeicao;
     }
-    return await this.update(medicaoId, update);
+    return this.update(medicaoId, patch);
   }
 
   async markAsSynced(medicaoId) {
-    return await this.update(medicaoId, { sincronizado: true });
+    return this.update(medicaoId, { sincronizado: true });
   }
 
+  /**
+   * Soma (quantidade × valorUnitario) de todas as medições aprovadas da obra.
+   * Usa RPC get_total_medicao_por_obra definida em supabase_rls_auth.sql.
+   */
   async getTotalPorObra(obraId) {
-    // Load medicoes aprovadas for obra and sum items on application side
-    const rows = await this.knex("medicoes")
-      .where({ obra: obraId, status: "aprovada" })
-      .andWhereRaw(this._notDeletedCondition());
-    let total = 0;
-    for (const r of rows) {
-      try {
-        const itens = r.itens ? JSON.parse(r.itens) : [];
-        for (const it of itens) {
-          const q = Number(it.quantidade || 0);
-          const v = Number(it.valorUnitario || 0);
-          total += q * v;
-        }
-      } catch (err) {
-        continue;
-      }
-    }
-    return total;
+    const { data, error } = await this.supabase.rpc("get_total_medicao_por_obra", {
+      p_obra_id: Number(obraId),
+    });
+    if (error) throw error;
+    return Number(data ?? 0);
   }
 }
 
 module.exports = new MedicaoRepository();
-

@@ -4,8 +4,20 @@ const { authenticate, authorize } = require("../middleware/auth");
 const { asyncHandler } = require("../middleware/errorHandler");
 const { successResponse } = require("../utils/helpers");
 const { PERFIS } = require("../constants");
+const supabase = require("../config/supabaseClient");
 
-const getKnex = () => require("../config/database").knex;
+function isMissingDeletedAtColumn(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return message.includes("deletedat") && message.includes("does not exist");
+}
+
+async function runWithDeletedAtFallback(buildQuery) {
+  const firstTry = await buildQuery(true);
+  if (!firstTry.error || !isMissingDeletedAtColumn(firstTry.error)) {
+    return firstTry;
+  }
+  return buildQuery(false);
+}
 
 /**
  * Extrai valor numérico do campo orcamento (armazenado como TEXT no banco).
@@ -44,17 +56,25 @@ router.get(
   authenticate,
   authorize(PERFIS.ADMIN, PERFIS.SUPERVISOR),
   asyncHandler(async (req, res) => {
-    const knex = getKnex();
     const periodo = Math.max(1, parseInt(req.query.periodo) || 30);
     const dataCorte = new Date(Date.now() - periodo * 24 * 60 * 60 * 1000).toISOString();
 
     // Buscar todas as obras ativas
-    const obras = await knex("obras")
-      .select("id", "nome", "status", "orcamento", "dataPrevisaoTermino")
-      .whereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)")
-      .whereNot("status", "cancelada");
+    const { data: obras, error: obrasErr } = await runWithDeletedAtFallback((withDeletedAt) => {
+      let query = supabase
+        .from("obras")
+        .select("id, nome, status, orcamento, dataPrevisaoTermino");
 
-    if (obras.length === 0) {
+      if (withDeletedAt) {
+        query = query.is("deletedAt", null);
+      }
+
+      return query.neq("status", "cancelada");
+    });
+
+    if (obrasErr) throw obrasErr;
+
+    if (!obras || obras.length === 0) {
       return res.json(
         successResponse(
           { resumoGeral: { totalOrcado: 0, totalRealizado: 0, obrasEmAlerta: 0, solicitacoesPendentes: 0, valorPendenteEstimado: 0 }, obras: [], alertas: [] },
@@ -65,27 +85,31 @@ router.get(
 
     const obraIds = obras.map((o) => o.id);
 
-    // Contar medições aprovadas por obra no período
-    const medicoesRaw = await knex("medicoes")
-      .select("obra", knex.raw("count(id) as total"))
-      .whereIn("obra", obraIds)
-      .where("status", "aprovada")
-      .where("data", ">=", dataCorte)
-      .groupBy("obra");
+    // Medições aprovadas no período (contagem e valor)
+    const { data: medicoesAprovadas, error: medErr } = await runWithDeletedAtFallback((withDeletedAt) => {
+      let query = supabase
+        .from("medicoes")
+        .select("obra, itens, data")
+        .in("obra", obraIds)
+        .eq("status", "aprovada");
+
+      if (withDeletedAt) {
+        query = query.is("deletedAt", null);
+      }
+
+      return query;
+    });
+
+    if (medErr) throw medErr;
 
     const medicoesPorObra = {};
-    for (const row of medicoesRaw) {
-      medicoesPorObra[row.obra] = Number(row.total || 0);
-    }
-
-    // Somar valorTotal das medições aprovadas por obra (campo calculado nos itens JSON)
-    const medicoesValorRaw = await knex("medicoes")
-      .select("obra", "itens")
-      .whereIn("obra", obraIds)
-      .where("status", "aprovada");
-
     const realizadoPorObra = {};
-    for (const row of medicoesValorRaw) {
+    for (const row of medicoesAprovadas ?? []) {
+      // Apenas contar dentro do período
+      if (row.data && row.data >= dataCorte) {
+        medicoesPorObra[row.obra] = (medicoesPorObra[row.obra] || 0) + 1;
+      }
+      // Valor realizado total (independente do período)
       let itens;
       try { itens = row.itens ? JSON.parse(row.itens) : []; } catch { itens = []; }
       const soma = Array.isArray(itens)
@@ -94,23 +118,33 @@ router.get(
       realizadoPorObra[row.obra] = (realizadoPorObra[row.obra] || 0) + soma;
     }
 
-    // Contar e somar solicitações pendentes por obra
-    const solicitacoesRaw = await knex("solicitacoes_compra")
-      .select("obra", knex.raw("count(id) as total"), knex.raw(`sum(coalesce("valorTotal", 0)) as "valorEstimado"`))
-      .whereIn("obra", obraIds)
-      .where("status", "pendente")
-      .groupBy("obra");
+    // Solicitações pendentes
+    const { data: solicitacoes, error: solErr } = await runWithDeletedAtFallback((withDeletedAt) => {
+      let query = supabase
+        .from("solicitacoes_compra")
+        .select("obra, valorTotal")
+        .in("obra", obraIds)
+        .eq("status", "pendente");
+
+      if (withDeletedAt) {
+        query = query.is("deletedAt", null);
+      }
+
+      return query;
+    });
+
+    if (solErr) throw solErr;
 
     const solicitacoesPorObra = {};
     const valorPendentePorObra = {};
-    for (const row of solicitacoesRaw) {
-      solicitacoesPorObra[row.obra] = Number(row.total || 0);
-      valorPendentePorObra[row.obra] = Number(row.valorEstimado || 0);
+    for (const row of solicitacoes ?? []) {
+      solicitacoesPorObra[row.obra] = (solicitacoesPorObra[row.obra] || 0) + 1;
+      valorPendentePorObra[row.obra] = (valorPendentePorObra[row.obra] || 0) + Number(row.valorTotal || 0);
     }
 
     const hoje = Date.now();
-    const ALERTA_PRAZO_DIAS = 30; // obras com menos de 30 dias para o fim são alertadas
-    const ALERTA_ORCAMENTO_PCT = 80; // obras com >= 80% do orçamento consumido
+    const ALERTA_PRAZO_DIAS = 30;
+    const ALERTA_ORCAMENTO_PCT = 80;
 
     let totalOrcado = 0;
     let totalRealizado = 0;
@@ -216,25 +250,47 @@ router.get(
   authenticate,
   authorize(PERFIS.ADMIN, PERFIS.SUPERVISOR),
   asyncHandler(async (req, res) => {
-    const knex = getKnex();
     const periodo = Math.max(1, parseInt(req.query.periodo) || 30);
     const dataCorte = new Date(Date.now() - periodo * 24 * 60 * 60 * 1000).toISOString();
 
-    const obras = await knex("obras")
-      .select("id", "nome", "status", "orcamento", "dataPrevisaoTermino")
-      .whereRaw("(metadata IS NULL OR (metadata::jsonb)->>'deletedAt' IS NULL)")
-      .whereNot("status", "cancelada");
+    const { data: obras, error: obrasErr } = await runWithDeletedAtFallback((withDeletedAt) => {
+      let query = supabase
+        .from("obras")
+        .select("id, nome, status, orcamento, dataPrevisaoTermino");
 
-    const obraIds = obras.map((o) => o.id);
+      if (withDeletedAt) {
+        query = query.is("deletedAt", null);
+      }
+
+      return query.neq("status", "cancelada");
+    });
+
+    if (obrasErr) throw obrasErr;
+
+    const obraIds = (obras ?? []).map((o) => o.id);
     const realizadoPorObra = {};
+    const medicoesPorObra = {};
+    const solicitacoesPorObra = {};
 
     if (obraIds.length > 0) {
-      const medicoesValorRaw = await knex("medicoes")
-        .select("obra", "itens")
-        .whereIn("obra", obraIds)
-        .where("status", "aprovada");
+      const { data: medsData } = await runWithDeletedAtFallback((withDeletedAt) => {
+        let query = supabase
+          .from("medicoes")
+          .select("obra, itens, data")
+          .in("obra", obraIds)
+          .eq("status", "aprovada");
 
-      for (const row of medicoesValorRaw) {
+        if (withDeletedAt) {
+          query = query.is("deletedAt", null);
+        }
+
+        return query;
+      });
+
+      for (const row of medsData ?? []) {
+        if (row.data && row.data >= dataCorte) {
+          medicoesPorObra[row.obra] = (medicoesPorObra[row.obra] || 0) + 1;
+        }
         let itens;
         try { itens = row.itens ? JSON.parse(row.itens) : []; } catch { itens = []; }
         const soma = Array.isArray(itens)
@@ -242,35 +298,28 @@ router.get(
           : 0;
         realizadoPorObra[row.obra] = (realizadoPorObra[row.obra] || 0) + soma;
       }
-    }
 
-    const medicoesPorObra = {};
-    if (obraIds.length > 0) {
-      const medicoesCount = await knex("medicoes")
-        .select("obra", knex.raw("count(id) as total"))
-        .whereIn("obra", obraIds)
-        .where("status", "aprovada")
-        .where("data", ">=", dataCorte)
-        .groupBy("obra");
-      for (const row of medicoesCount) {
-        medicoesPorObra[row.obra] = Number(row.total || 0);
-      }
-    }
+      const { data: solData } = await runWithDeletedAtFallback((withDeletedAt) => {
+        let query = supabase
+          .from("solicitacoes_compra")
+          .select("obra")
+          .in("obra", obraIds)
+          .eq("status", "pendente");
 
-    const solicitacoesPorObra = {};
-    if (obraIds.length > 0) {
-      const solRaw = await knex("solicitacoes_compra")
-        .select("obra", knex.raw("count(id) as total"))
-        .whereIn("obra", obraIds)
-        .where("status", "pendente")
-        .groupBy("obra");
-      for (const row of solRaw) {
-        solicitacoesPorObra[row.obra] = Number(row.total || 0);
+        if (withDeletedAt) {
+          query = query.is("deletedAt", null);
+        }
+
+        return query;
+      });
+
+      for (const row of solData ?? []) {
+        solicitacoesPorObra[row.obra] = (solicitacoesPorObra[row.obra] || 0) + 1;
       }
     }
 
     const hoje = Date.now();
-    const rows = obras.map((obra) => {
+    const rows = (obras ?? []).map((obra) => {
       const orcado = parseOrcamento(obra.orcamento);
       const realizado = realizadoPorObra[obra.id] || 0;
       const percentualGasto = orcado > 0 ? Math.round((realizado / orcado) * 100) : 0;
@@ -299,7 +348,7 @@ router.get(
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="painel-obras-${new Date().toISOString().slice(0, 10)}.csv"`);
-    res.send("\uFEFF" + csv); // BOM UTF-8 para compatibilidade com Excel
+    res.send("\uFEFF" + csv);
   }),
 );
 
@@ -317,48 +366,46 @@ router.get(
   authenticate,
   authorize(PERFIS.ADMIN, PERFIS.SUPERVISOR),
   asyncHandler(async (req, res) => {
-    const knex = getKnex();
     const { obraId, mes } = req.query;
 
-    let qb = knex("medicoes")
-      .leftJoin("obras", "medicoes.obra", "obras.id")
-      .leftJoin("users", "medicoes.responsavel", "users.id")
-      .whereRaw("(medicoes.metadata IS NULL OR (medicoes.metadata::jsonb)->>'deletedAt' IS NULL)")
-      .select(
-        "medicoes.id",
-        "obras.nome as obraNome",
-        "users.nome as responsavelNome",
-        "medicoes.data",
-        "medicoes.area",
-        "medicoes.tipoServico",
-        "medicoes.status",
-        "medicoes.areaCalculada",
-        "medicoes.volume",
-        "medicoes.observacoes",
-        "medicoes.itens",
-      )
-      .orderBy("medicoes.data", "desc");
+    const buildMedicoesQuery = (withDeletedAt) => {
+      let query = supabase
+        .from("medicoes")
+        .select("id, obra, responsavel, data, area, tipoServico, status, areaCalculada, volume, observacoes, itens, obras(nome), users:responsavel(nome)")
+        .order("data", { ascending: false });
 
-    if (obraId) {
-      const obraNum = parseInt(obraId, 10);
-      if (!isNaN(obraNum) && obraNum > 0) qb = qb.andWhere("medicoes.obra", obraNum);
-    }
-
-    if (mes && /^\d{4}-\d{2}$/.test(mes)) {
-      const [ano, month] = mes.split("-");
-      const monthNum = parseInt(month, 10);
-      if (monthNum < 1 || monthNum > 12) {
-        return res.status(400).json({ success: false, error: { message: "Mês inválido." } });
+      if (withDeletedAt) {
+        query = query.is("deletedAt", null);
       }
-      const inicio = new Date(`${ano}-${month}-01T00:00:00.000Z`).toISOString();
-      const fimDate = new Date(Number(ano), Number(month), 1); // primeiro dia do próximo mês
-      const fim = fimDate.toISOString();
-      qb = qb.andWhere("medicoes.data", ">=", inicio).andWhere("medicoes.data", "<", fim);
+
+      if (obraId) {
+        const obraNum = parseInt(obraId, 10);
+        if (!isNaN(obraNum) && obraNum > 0) query = query.eq("obra", obraNum);
+      }
+
+      if (mes && /^\d{4}-\d{2}$/.test(mes)) {
+        const [ano, month] = mes.split("-");
+        const monthNum = parseInt(month, 10);
+        if (monthNum < 1 || monthNum > 12) {
+          return { error: { message: "Mês inválido." }, data: null };
+        }
+        const inicio = new Date(`${ano}-${month}-01T00:00:00.000Z`).toISOString();
+        const fimDate = new Date(Number(ano), Number(month), 1);
+        query = query.gte("data", inicio).lt("data", fimDate.toISOString());
+      }
+
+      return query;
+    };
+
+    const built = buildMedicoesQuery(false);
+    if (built?.error?.message === "Mês inválido.") {
+      return res.status(400).json({ success: false, error: { message: "Mês inválido." } });
     }
 
-    const medicoes = await qb;
+    const { data: medicoes, error: medErr } = await runWithDeletedAtFallback(buildMedicoesQuery);
+    if (medErr) throw medErr;
 
-    const rows = medicoes.map((m) => {
+    const rows = (medicoes ?? []).map((m) => {
       let valorTotal;
       try {
         const itens = m.itens ? JSON.parse(m.itens) : [];
@@ -368,17 +415,17 @@ router.get(
       } catch { valorTotal = 0; }
 
       return {
-        "ID":                m.id,
-        "Obra":              m.obraNome || "",
-        "Responsável":       m.responsavelNome || "",
-        "Data":              m.data ? new Date(m.data).toLocaleDateString("pt-BR") : "",
-        "Área/Ambiente":     m.area || "",
-        "Tipo de Serviço":   m.tipoServico || "",
-        "Status":            m.status || "",
-        "Área calc. (m²)":   m.areaCalculada != null ? Number(m.areaCalculada).toFixed(2) : "",
-        "Volume (m³)":       m.volume != null ? Number(m.volume).toFixed(2) : "",
-        "Valor Total (R$)":  valorTotal.toFixed(2),
-        "Observações":       m.observacoes || "",
+        "ID":               m.id,
+        "Obra":             m.obras?.nome || "",
+        "Responsável":      m.users?.nome || "",
+        "Data":             m.data ? new Date(m.data).toLocaleDateString("pt-BR") : "",
+        "Área/Ambiente":    m.area || "",
+        "Tipo de Serviço":  m.tipoServico || "",
+        "Status":           m.status || "",
+        "Área calc. (m²)":  m.areaCalculada != null ? Number(m.areaCalculada).toFixed(2) : "",
+        "Volume (m³)":      m.volume != null ? Number(m.volume).toFixed(2) : "",
+        "Valor Total (R$)": valorTotal.toFixed(2),
+        "Observações":      m.observacoes || "",
       };
     });
 

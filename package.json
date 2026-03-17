@@ -9,6 +9,7 @@
     "test": "jest",
     "lint": "eslint src/",
     "seed": "node scripts/seed.js",
+    "seed:sqlite": "node scripts/seed_sqlite.js",
     "seed:postgres": "node scripts/seed_postgres.js",
     "migrate": "knex migrate:latest --knexfile knexfile.js",
     "migrate:rollback": "knex migrate:rollback --knexfile knexfile.js"
