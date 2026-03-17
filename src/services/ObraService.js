@@ -168,7 +168,8 @@ class ObraService {
     // Funcao sempre reflete o perfil real do usuário no sistema
     const funcao = user.perfil;
 
-    return await obraRepository.vincularEncarregado(obraId, userId, funcao);
+    await obraRepository.vincularEncarregado(obraId, userId, funcao);
+    return await this._hydrate(obraId);
   }
 
   /**
@@ -208,11 +209,7 @@ class ObraService {
   }
 
   async _appendEncarregados(obra) {
-    try {
-      obra.encarregados = await obraRepository.listarEncarregados(obra.id);
-    } catch (_) {
-      obra.encarregados = [];
-    }
+    obra.encarregados = await obraRepository.listarEncarregados(obra.id);
     return obra;
   }
 

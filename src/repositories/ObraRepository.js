@@ -142,15 +142,22 @@ class ObraRepository extends BaseRepository {
   }
 
   /**
-   * Lista os encarregados vinculados a uma obra usando RPC com JOIN.
-   * Usa stored procedure listar_encarregados definida em supabase_rls_auth.sql.
+   * Lista os encarregados vinculados a uma obra com dados do usuário via JOIN.
    */
   async listarEncarregados(obraId) {
-    const { data, error } = await this.supabase.rpc("listar_encarregados", {
-      p_obra_id: Number(obraId),
-    });
+    const { data, error } = await this.supabase
+      .from("obra_encarregados")
+      .select("id, obraId, userId, funcao, dataInclusao, users(id, nome, email, perfil)")
+      .eq("obraId", Number(obraId))
+      .order("dataInclusao", { ascending: true });
+
     if (error) throw error;
-    return data ?? [];
+    return (data ?? []).map(({ users: u, ...enc }) => ({
+      ...enc,
+      nome: u?.nome,
+      email: u?.email,
+      perfil: u?.perfil,
+    }));
   }
 
   /**

@@ -55,10 +55,18 @@ class MedicaoRepository extends BaseRepository {
       return { data: rows, total, page, limit };
     }
 
-    // Fallback para ambientes em que a RPC ainda não foi criada no Supabase.
-    const rpcMissing = String(error.message || "").includes("get_medicoes_filtered")
-      && String(error.message || "").includes("schema cache");
-    if (!rpcMissing) {
+    // Fallback para ambientes em que a RPC não existe ou está desatualizada no Supabase.
+    const errorText = [error.message, error.details, error.hint]
+      .filter(Boolean)
+      .join(" ");
+
+    const rpcMissing = errorText.includes("get_medicoes_filtered")
+      && errorText.includes("schema cache");
+
+    const rpcResultMismatch = /structure of query does not match function result type|returned type .* does not match expected type/i
+      .test(errorText);
+
+    if (!rpcMissing && !rpcResultMismatch) {
       throw error;
     }
 
