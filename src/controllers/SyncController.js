@@ -9,8 +9,8 @@ class SyncController {
    * @access Private
    */
   getPending = asyncHandler(async (req, res) => {
-    const { lastSyncDate } = req.query;
-    const data = await syncService.getPendingData(req.user.id, lastSyncDate);
+    const { lastSyncDate, limit, page } = req.query;
+    const data = await syncService.getPendingData(req.user.id, lastSyncDate, { limit, page });
 
     res.json(successResponse(data, "Dados pendentes de sincronização"));
   });

@@ -42,7 +42,11 @@ class BaseRepository {
 
   _isMissingDeletedAtColumn(error) {
     const message = String(error?.message || "").toLowerCase();
-    return message.includes("deletedat") && message.includes("does not exist");
+    // Detecta erro do PostgreSQL/Supabase ("does not exist") e do SQLite ("no such column")
+    return (
+      message.includes("deletedat") &&
+      (message.includes("does not exist") || message.includes("no such column"))
+    );
   }
 
   async _runWithDeletedAtFallback(runQuery) {
@@ -172,10 +176,10 @@ class BaseRepository {
         .maybeSingle();
 
       if (existing) {
-        let meta = {};
+        let meta;
         try {
           meta = existing.metadata ? JSON.parse(existing.metadata) : {};
-        } catch (_) {
+        } catch (_e) {
           meta = {};
         }
         meta.updatedAt = new Date().toISOString();

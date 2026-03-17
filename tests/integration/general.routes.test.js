@@ -22,6 +22,13 @@ jest.mock("../../src/config/database", () => ({
   get knex() { return require("../helpers/fullDatabase").getFullDb(); },
 }));
 
+jest.mock("../../src/config/supabaseClient", () => {
+  const { createSupabaseMock } = require("../helpers/supabaseMock");
+  const mock = createSupabaseMock(() => require("../helpers/fullDatabase").getFullDb());
+  mock.createUserClient = jest.fn().mockReturnValue(mock);
+  return mock;
+});
+
 // ── App (after mocks) ─────────────────────────────────────────────────────────
 const app = require("../../src/app");
 
@@ -154,6 +161,8 @@ describe("POST /api/measurements", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send({
         obra: 1,
+        area: "Piso Térreo",
+        tipoServico: "alvenaria",
         itens: [{ descricao: "Alvenaria", quantidade: 10, unidade: "m²", valorUnitario: 50 }],
         observacoes: "Teste canônico",
       });

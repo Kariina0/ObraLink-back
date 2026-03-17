@@ -3,21 +3,9 @@ const router = express.Router();
 const { authenticate, authorize } = require("../middleware/auth");
 const { asyncHandler } = require("../middleware/errorHandler");
 const { successResponse } = require("../utils/helpers");
+const { runWithDeletedAtFallback } = require("../utils/dbHelpers");
 const { PERFIS } = require("../constants");
 const supabase = require("../config/supabaseClient");
-
-function isMissingDeletedAtColumn(error) {
-  const message = String(error?.message || "").toLowerCase();
-  return message.includes("deletedat") && message.includes("does not exist");
-}
-
-async function runWithDeletedAtFallback(buildQuery) {
-  const firstTry = await buildQuery(true);
-  if (!firstTry.error || !isMissingDeletedAtColumn(firstTry.error)) {
-    return firstTry;
-  }
-  return buildQuery(false);
-}
 
 // Importar rotas
 const authRoutes = require("./auth");
@@ -35,7 +23,7 @@ router.get("/health", asyncHandler(async (req, res) => {
     const { error } = await supabase.from("users").select("id").limit(1);
     if (error) throw error;
     res.json({ status: "ok", db: "connected", timestamp: new Date().toISOString() });
-  } catch (err) {
+  } catch (_err) {
     res.status(503).json({ status: "error", db: "disconnected", timestamp: new Date().toISOString() });
   }
 }));

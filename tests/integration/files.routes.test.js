@@ -25,7 +25,13 @@ jest.mock("../../src/config/database", () => ({
   isConnected: jest.fn().mockReturnValue(true),
   get knex()   { return require("../helpers/database").getTestDb(); },
 }));
-
+// 1b. Mock do supabaseClient → redireciona queries ao SQLite in-memory
+jest.mock("../../src/config/supabaseClient", () => {
+  const { createSupabaseMock } = require("../helpers/supabaseMock");
+  const mock = createSupabaseMock(() => require("../helpers/database").getTestDb());
+  mock.createUserClient = jest.fn().mockReturnValue(mock);
+  return mock;
+});
 // 2. Mock do StorageService → não chama Supabase de verdade
 const mockStorageUpload     = jest.fn();
 const mockStorageSignedUrl  = jest.fn();

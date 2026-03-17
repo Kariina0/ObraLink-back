@@ -27,6 +27,13 @@ jest.mock("../../src/config/database", () => ({
   },
 }));
 
+jest.mock("../../src/config/supabaseClient", () => {
+  const { createSupabaseMock } = require("../helpers/supabaseMock");
+  const mock = createSupabaseMock(() => require("../helpers/database").getTestDb());
+  mock.createUserClient = jest.fn().mockReturnValue(mock);
+  return mock;
+});
+
 // ── App (after mocks) ─────────────────────────────────────────────────────────
 const app = require("../../src/app");
 

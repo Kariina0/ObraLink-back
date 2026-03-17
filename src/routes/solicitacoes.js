@@ -11,6 +11,8 @@ const { PERFIS } = require("../constants");
 
 // ── Schemas de validação ──────────────────────────────────────────────────────
 
+const { generateSyncId } = require("../utils/helpers");
+
 const createSchema = Joi.object({
   obra: Joi.number().integer().positive().allow(null).default(null),
   itens: Joi.array()
@@ -77,6 +79,7 @@ router.post(
       solicitante: req.user.id,
       status: "pendente",
       dataSolicitacao: new Date(),
+      syncId: generateSyncId(),
     });
 
     res

@@ -76,7 +76,7 @@ class ObraService {
     }
 
     // Não atualizar encarregados aqui — use addEncarregado/removeEncarregado
-    const { encarregados, ...dadosObra } = obraData;
+    const { encarregados: _encarregados, ...dadosObra } = obraData;
 
     await obraRepository.update(obraId, dadosObra);
     return await this._hydrate(obraId);
@@ -145,7 +145,8 @@ class ObraService {
       }
     }
 
-    return await this._hydrate(obraId);
+    // Reutiliza o objeto já buscado — evita query extra ao banco
+    return await this._appendEncarregados(obra);
   }
 
   /**

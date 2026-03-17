@@ -65,7 +65,7 @@ class UserRepository extends BaseRepository {
     const rawUser = await this.findById(userId);
 
     // Remove campos sensíveis — não devem constar em exportações LGPD
-    const { senha, refreshToken, resetPasswordToken, ...safeUser } = rawUser;
+    const { senha: _senha, refreshToken: _refreshToken, resetPasswordToken: _resetToken, ...safeUser } = rawUser;
 
     const [medicoes, diarios, solicitacoes, arquivos] = await Promise.all([
       this.supabase.from("medicoes").select("*").eq("responsavel", userId).is("deletedAt", null),

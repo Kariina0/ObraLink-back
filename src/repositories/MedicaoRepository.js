@@ -103,7 +103,7 @@ class MedicaoRepository extends BaseRepository {
     if (!error) {
       const total = data?.length > 0 ? Number(data[0].total_count ?? 0) : 0;
       // Remove total_count do payload (campo interno de paginação)
-      const rows = (data ?? []).map(({ total_count, ...row }) => row);
+      const rows = (data ?? []).map(({ total_count: _tc, ...row }) => row);
       return { data: rows, total, page, limit };
     }
 

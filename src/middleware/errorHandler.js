@@ -1,5 +1,4 @@
 const logger = require("../utils/logger");
-const { AppError } = require("../utils/errors");
 const { errorResponse } = require("../utils/helpers");
 const { ERROR_CODES } = require("../constants");
 const multer = require("multer");
@@ -7,7 +6,7 @@ const multer = require("multer");
 /**
  * Middleware de tratamento de erros
  */
-const errorHandler = (err, req, res, next) => {
+const errorHandler = (err, req, res, _next) => {
   // ── Erros do Multer ────────────────────────────────────────────────────────
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {

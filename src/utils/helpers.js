@@ -113,7 +113,7 @@ const buildQueryFilters = (queryParams) => {
   const filters = {};
 
   // Remove campos de paginação
-  const { page, limit, sort, ...filterParams } = queryParams;
+  const { page: _page, limit: _limit, sort: _sort, ...filterParams } = queryParams;
 
   Object.keys(filterParams).forEach((key) => {
     if (filterParams[key]) {

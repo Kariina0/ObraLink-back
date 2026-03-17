@@ -9,6 +9,8 @@ const { generateSyncId } = require("../utils/helpers");
 const { PERFIS } = require("../constants");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
+const emailService = require("./EmailService");
+const logger = require("../utils/logger");
 
 class AuthService {
   async register(userData) {
@@ -88,7 +90,7 @@ class AuthService {
       await userRepository.updateRefreshToken(user.id, newHash);
 
       return tokens;
-    } catch (error) {
+    } catch (_error) {
       throw new UnauthorizedError("Refresh token inválido");
     }
   }
@@ -139,6 +141,11 @@ class AuthService {
       resetPasswordToken: resetHash,
       resetPasswordExpiresAt: expiresAt,
       resetPasswordUsedAt: null,
+    });
+
+    // Enviar email com o código de recuperação (fire-and-forget — não bloqueia a resposta)
+    emailService.sendPasswordResetCode(user.email, resetCode, expiresAt).catch((err) => {
+      logger.error(`[AUTH] Falha ao enviar email de recuperação para ${user.email}:`, err.message);
     });
 
     const result = { message: genericMessage };

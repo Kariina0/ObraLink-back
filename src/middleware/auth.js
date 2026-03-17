@@ -139,7 +139,7 @@ const optionalAuth = async (req, res, next) => {
           } catch (_) {
             try {
               profile = await userRepository.findByEmail(authUser.email);
-            } catch (_2) {}
+            } catch (_2) { /* email lookup também falhou — profile permanece null */ }
           }
 
           if (profile && profile.isActive) {
@@ -221,7 +221,7 @@ async function _optionalLegacy(req, token) {
         obraAtual: user.obraAtual ?? null,
       };
     }
-  } catch (_) {}
+  } catch (_) { /* token inválido em auth opcional — ignorado */ }
 }
 
 module.exports = { authenticate, authorize, optionalAuth };

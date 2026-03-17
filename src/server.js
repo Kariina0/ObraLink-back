@@ -1,4 +1,9 @@
 require("dotenv").config();
+
+// Valida variáveis de ambiente obrigatórias ANTES de carregar qualquer serviço
+const validateEnv = require("./utils/validateEnv");
+validateEnv();
+
 const app = require("./app");
 const supabase = require("./config/supabaseClient");
 const logger = require("./utils/logger");

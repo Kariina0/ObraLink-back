@@ -5,6 +5,12 @@ const arquivoRepository = require("../repositories/ArquivoRepository");
 const { retryWithBackoff } = require("../utils/helpers");
 const logger = require("../utils/logger");
 
+// Import lazy para evitar dependência circular (ArquivoService → SyncService)
+const _getArquivoService = () => require("./ArquivoService");
+
+/** Status finais que não podem ser sobrescritos por um sync posterior */
+const FINAL_STATUSES = ["aprovada", "rejeitada", "concluida"];
+
 class SyncService {
   _parseMetadata(metadata) {
     if (!metadata) return {};
@@ -12,7 +18,7 @@ class SyncService {
     if (typeof metadata === "string") {
       try {
         return JSON.parse(metadata);
-      } catch (error) {
+      } catch (_error) {
         return {};
       }
     }
@@ -56,15 +62,21 @@ class SyncService {
   /**
    * Retorna dados pendentes de sincronização do servidor
    */
-  async getPendingData(userId, lastSyncDate) {
+  async getPendingData(userId, lastSyncDate, options = {}) {
     const lastSync = lastSyncDate ? new Date(lastSyncDate) : null;
     const hasValidLastSync = lastSync && !Number.isNaN(lastSync.getTime());
 
+    // Limite configurável — evita respostas gigantes em conexão lenta
+    const defaultLimit = parseInt(process.env.SYNC_BATCH_LIMIT) || 100;
+    const maxLimit     = parseInt(process.env.SYNC_BATCH_LIMIT_MAX) || 500;
+    const limit = Math.min(Math.max(1, parseInt(options.limit) || defaultLimit), maxLimit);
+    const page  = Math.max(1, parseInt(options.page) || 1);
+
     const [medicoes, diarios, solicitacoes, arquivos] = await Promise.all([
-      medicaoRepository.findAll({ responsavel: userId }, { limit: 1000 }),
-      diarioRepository.findAll({ responsavel: userId }, { limit: 1000 }),
-      solicitacaoCompraRepository.findAll({ solicitante: userId }, { limit: 1000 }),
-      arquivoRepository.findAll({ uploadedBy: userId }, { limit: 1000 }),
+      medicaoRepository.findAll({ responsavel: userId }, { limit, page }),
+      diarioRepository.findAll({ responsavel: userId }, { limit, page }),
+      solicitacaoCompraRepository.findAll({ solicitante: userId }, { limit, page }),
+      arquivoRepository.findAll({ uploadedBy: userId }, { limit, page }),
     ]);
 
     const filterByDate = (rows) => {
@@ -81,6 +93,7 @@ class SyncService {
       diarios: filterByDate(diarios.data),
       solicitacoes: filterByDate(solicitacoes.data),
       arquivos: filterByDate(arquivos.data),
+      pagination: { page, limit },
       timestamp: new Date(),
     };
   }
@@ -151,7 +164,7 @@ class SyncService {
       }
     }
 
-    // Processar solicitações
+    // Processar solitações
     if (batchData.solicitacoes && batchData.solicitacoes.length > 0) {
       for (const solicitacao of batchData.solicitacoes) {
         try {
@@ -175,6 +188,26 @@ class SyncService {
               error: error.message,
             });
           }
+        }
+      }
+    }
+
+    // Processar arquivos/fotos enviados offline (base64)
+    if (batchData.arquivos && batchData.arquivos.length > 0) {
+      for (const arquivo of batchData.arquivos) {
+        try {
+          const result = await this.syncArquivo(arquivo, userId);
+          results.success.push({
+            type: "arquivo",
+            id: result.id || result._id || null,
+            syncId: arquivo.syncId,
+          });
+        } catch (error) {
+          results.errors.push({
+            type: "arquivo",
+            syncId: arquivo.syncId,
+            error: error.message,
+          });
         }
       }
     }
@@ -241,7 +274,7 @@ class SyncService {
   }
 
   /**
-   * Sincroniza um diário (Last-Write-Wins)
+   * Sincroniza um diário (Last-Write-Wins com proteção de status finais)
    */
   async syncDiario(diarioData, userId) {
     if (!diarioData.syncId) {
@@ -251,6 +284,14 @@ class SyncService {
     const existing = await diarioRepository.findBySyncId(diarioData.syncId);
 
     if (existing) {
+      // Impede sobrescrita de diários com status final (ex: aprovado pelo supervisor)
+      if (existing.status && FINAL_STATUSES.includes(existing.status)) {
+        logger.info(
+          `Sync ignorado — diário ${diarioData.syncId} já possui status final: ${existing.status}`,
+        );
+        return existing;
+      }
+
       if (this._isClientNewer(diarioData.clientTimestamp, existing)) {
         logger.info(
           `Resolvendo conflito de diário ${diarioData.syncId} - Cliente vence`,
@@ -312,6 +353,56 @@ class SyncService {
       sincronizado: true,
       metadata: { createdBy: userId },
     });
+  }
+
+  /**
+   * Sincroniza um arquivo/foto enviado offline em base64.
+   * Converte base64 → Buffer e usa ArquivoService.processUpload para manter
+   * toda a lógica de compressão, validação de magic bytes e storage.
+   */
+  async syncArquivo(arquivoData, userId) {
+    if (!arquivoData.syncId) {
+      throw new Error("syncId é obrigatório para sincronização");
+    }
+
+    // Idempotência: se já existe no banco, retorna sem reprocessar
+    const existing = await arquivoRepository.findBySyncId(arquivoData.syncId);
+    if (existing) {
+      logger.info(`Sync de arquivo ignorado — syncId ${arquivoData.syncId} já existe (id=${existing.id})`);
+      return existing;
+    }
+
+    if (!arquivoData.base64) {
+      throw new Error("Campo 'base64' é obrigatório para sync de arquivos");
+    }
+
+    // Converte base64 para Buffer (mantém compatibilidade com ArquivoService)
+    const buffer = Buffer.from(arquivoData.base64, "base64");
+
+    const file = {
+      buffer,
+      size:         buffer.length,
+      originalname: arquivoData.originalname || "foto_offline.jpg",
+      mimetype:     arquivoData.mimeType,
+    };
+
+    const metadata = {
+      obra:             arquivoData.obra,
+      tipo:             arquivoData.tipo             || "foto_obra",
+      tipoArquivo:      arquivoData.tipoArquivo,
+      descricao:        arquivoData.descricao        || "Enviado offline",
+      coordenadas:      arquivoData.coordenadas      || null,
+      tags:             arquivoData.tags             || null,
+      solicitadoPor:    arquivoData.solicitadoPor    || null,
+      detalheProblema:  arquivoData.detalheProblema  || null,
+    };
+
+    // processUpload já gerencia compressão, magic bytes e persistência
+    const arquivoService = _getArquivoService();
+    const resultado = await arquivoService.processUpload(file, metadata, userId);
+
+    logger.info(`[SYNC] Arquivo offline sincronizado — syncId: ${arquivoData.syncId} | id: ${resultado.id}`);
+    return resultado;
   }
 
   /**

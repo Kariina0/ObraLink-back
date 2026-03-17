@@ -3,21 +3,9 @@ const router = express.Router();
 const { authenticate, authorize } = require("../middleware/auth");
 const { asyncHandler } = require("../middleware/errorHandler");
 const { successResponse } = require("../utils/helpers");
+const { runWithDeletedAtFallback } = require("../utils/dbHelpers");
 const { PERFIS } = require("../constants");
 const supabase = require("../config/supabaseClient");
-
-function isMissingDeletedAtColumn(error) {
-  const message = String(error?.message || "").toLowerCase();
-  return message.includes("deletedat") && message.includes("does not exist");
-}
-
-async function runWithDeletedAtFallback(buildQuery) {
-  const firstTry = await buildQuery(true);
-  if (!firstTry.error || !isMissingDeletedAtColumn(firstTry.error)) {
-    return firstTry;
-  }
-  return buildQuery(false);
-}
 
 /**
  * Extrai valor numérico do campo orcamento (armazenado como TEXT no banco).
@@ -56,7 +44,7 @@ router.get(
   authenticate,
   authorize(PERFIS.ADMIN, PERFIS.SUPERVISOR),
   asyncHandler(async (req, res) => {
-    const periodo = Math.max(1, parseInt(req.query.periodo) || 30);
+    const periodo = Math.min(365, Math.max(1, parseInt(req.query.periodo) || 30));
     const dataCorte = new Date(Date.now() - periodo * 24 * 60 * 60 * 1000).toISOString();
 
     // Buscar todas as obras ativas
@@ -85,27 +73,41 @@ router.get(
 
     const obraIds = obras.map((o) => o.id);
 
-    // Medições aprovadas no período (contagem e valor)
-    const { data: medicoesAprovadas, error: medErr } = await runWithDeletedAtFallback((withDeletedAt) => {
-      let query = supabase
-        .from("medicoes")
-        .select("obra, itens, data")
-        .in("obra", obraIds)
-        .eq("status", "aprovada");
+    // Medições aprovadas e solicitações pendentes — consultas paralelas (ambas dependem de obraIds)
+    const [
+      { data: medicoesAprovadas, error: medErr },
+      { data: solicitacoes,      error: solErr },
+    ] = await Promise.all([
+      runWithDeletedAtFallback((withDeletedAt) => {
+        let query = supabase
+          .from("medicoes")
+          .select("obra, itens, data")
+          .in("obra", obraIds)
+          .eq("status", "aprovada");
 
-      if (withDeletedAt) {
-        query = query.is("deletedAt", null);
-      }
+        if (withDeletedAt) query = query.is("deletedAt", null);
+        return query;
+      }),
+      runWithDeletedAtFallback((withDeletedAt) => {
+        let query = supabase
+          .from("solicitacoes_compra")
+          .select("obra, valorTotal")
+          .in("obra", obraIds)
+          .eq("status", "pendente");
 
-      return query;
-    });
+        if (withDeletedAt) query = query.is("deletedAt", null);
+        return query;
+      }),
+    ]);
 
     if (medErr) throw medErr;
+    if (solErr) throw solErr;
 
+    // Acumular valores por obra a partir das medições aprovadas
     const medicoesPorObra = {};
     const realizadoPorObra = {};
     for (const row of medicoesAprovadas ?? []) {
-      // Apenas contar dentro do período
+      // Contar apenas medições dentro do período
       if (row.data && row.data >= dataCorte) {
         medicoesPorObra[row.obra] = (medicoesPorObra[row.obra] || 0) + 1;
       }
@@ -117,23 +119,6 @@ router.get(
         : 0;
       realizadoPorObra[row.obra] = (realizadoPorObra[row.obra] || 0) + soma;
     }
-
-    // Solicitações pendentes
-    const { data: solicitacoes, error: solErr } = await runWithDeletedAtFallback((withDeletedAt) => {
-      let query = supabase
-        .from("solicitacoes_compra")
-        .select("obra, valorTotal")
-        .in("obra", obraIds)
-        .eq("status", "pendente");
-
-      if (withDeletedAt) {
-        query = query.is("deletedAt", null);
-      }
-
-      return query;
-    });
-
-    if (solErr) throw solErr;
 
     const solicitacoesPorObra = {};
     const valorPendentePorObra = {};
@@ -194,6 +179,7 @@ router.get(
       (o) => o.percentualGasto >= ALERTA_ORCAMENTO_PCT || o.alertaPrazo,
     );
 
+    res.setHeader("Cache-Control", "no-store");
     res.json(
       successResponse(
         {
@@ -250,7 +236,7 @@ router.get(
   authenticate,
   authorize(PERFIS.ADMIN, PERFIS.SUPERVISOR),
   asyncHandler(async (req, res) => {
-    const periodo = Math.max(1, parseInt(req.query.periodo) || 30);
+    const periodo = Math.min(365, Math.max(1, parseInt(req.query.periodo) || 30));
     const dataCorte = new Date(Date.now() - periodo * 24 * 60 * 60 * 1000).toISOString();
 
     const { data: obras, error: obrasErr } = await runWithDeletedAtFallback((withDeletedAt) => {
@@ -271,6 +257,7 @@ router.get(
     const realizadoPorObra = {};
     const medicoesPorObra = {};
     const solicitacoesPorObra = {};
+    const valorPendentePorObra = {};
 
     if (obraIds.length > 0) {
       const { data: medsData } = await runWithDeletedAtFallback((withDeletedAt) => {
@@ -302,7 +289,7 @@ router.get(
       const { data: solData } = await runWithDeletedAtFallback((withDeletedAt) => {
         let query = supabase
           .from("solicitacoes_compra")
-          .select("obra")
+          .select("obra, valorTotal")
           .in("obra", obraIds)
           .eq("status", "pendente");
 
@@ -315,6 +302,7 @@ router.get(
 
       for (const row of solData ?? []) {
         solicitacoesPorObra[row.obra] = (solicitacoesPorObra[row.obra] || 0) + 1;
+        valorPendentePorObra[row.obra] = (valorPendentePorObra[row.obra] || 0) + Number(row.valorTotal || 0);
       }
     }
 
@@ -329,20 +317,21 @@ router.get(
         prazoDiasRestantes = Math.ceil((fim - hoje) / (1000 * 60 * 60 * 24));
       }
       return {
-        "Obra":                     obra.nome,
-        "Status":                   obra.status,
-        "Orçado (R$)":              orcado.toFixed(2),
-        "Realizado (R$)":           realizado.toFixed(2),
-        "% Gasto":                  `${percentualGasto}%`,
-        "Prazo (dias)":             prazoDiasRestantes,
-        [`Medições (${periodo}d)`]: medicoesPorObra[obra.id] || 0,
-        "Solicitações pendentes":   solicitacoesPorObra[obra.id] || 0,
+        "Obra":                          obra.nome,
+        "Status":                        obra.status,
+        "Orçado (R$)":                   orcado.toFixed(2),
+        "Realizado (R$)":                realizado.toFixed(2),
+        "% Gasto":                       `${percentualGasto}%`,
+        "Prazo (dias)":                  prazoDiasRestantes,
+        [`Medições (${periodo}d)`]:      medicoesPorObra[obra.id] || 0,
+        "Solicitações pendentes":        solicitacoesPorObra[obra.id] || 0,
+        "Valor pendente est. (R$)":      (valorPendentePorObra[obra.id] || 0).toFixed(2),
       };
     });
 
     const headers = [
       "Obra", "Status", "Orçado (R$)", "Realizado (R$)", "% Gasto",
-      "Prazo (dias)", `Medições (${periodo}d)`, "Solicitações pendentes",
+      "Prazo (dias)", `Medições (${periodo}d)`, "Solicitações pendentes", "Valor pendente est. (R$)",
     ];
     const csv = toCSV(headers, rows);
 
@@ -366,7 +355,8 @@ router.get(
   authenticate,
   authorize(PERFIS.ADMIN, PERFIS.SUPERVISOR),
   asyncHandler(async (req, res) => {
-    const { obraId, mes } = req.query;
+    const { obraId, mes, status } = req.query;
+    const ALLOWED_STATUSES = ["enviada", "aprovada", "rejeitada", "rascunho"];
 
     const buildMedicoesQuery = (withDeletedAt) => {
       let query = supabase
@@ -381,6 +371,10 @@ router.get(
       if (obraId) {
         const obraNum = parseInt(obraId, 10);
         if (!isNaN(obraNum) && obraNum > 0) query = query.eq("obra", obraNum);
+      }
+
+      if (status && ALLOWED_STATUSES.includes(status)) {
+        query = query.eq("status", status);
       }
 
       if (mes && /^\d{4}-\d{2}$/.test(mes)) {
