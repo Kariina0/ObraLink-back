@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS users (
   "resetPasswordToken"     VARCHAR(255),
   "resetPasswordExpiresAt" TIMESTAMPTZ,
   "resetPasswordUsedAt"    TIMESTAMPTZ,
+  -- soft-delete (consistência com demais tabelas)
+  "deletedAt"      TIMESTAMPTZ,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_at       TIMESTAMPTZ DEFAULT NOW()
 );

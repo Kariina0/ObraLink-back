@@ -39,7 +39,15 @@ class MedicaoController {
       successResponse(
         result.data.map((m) => new MedicaoDTO(m)),
         "Medições listadas",
-        pagination,
+        {
+          ...pagination,
+          statusSummary: result.statusSummary || {
+            enviada: 0,
+            aprovada: 0,
+            rejeitada: 0,
+            rascunho: 0,
+          },
+        },
       )
     );
   });
@@ -65,15 +73,17 @@ class MedicaoController {
    * @access Private
    */
   getByObra = asyncHandler(async (req, res) => {
-    const { page: rawPage, limit: rawLimit } = req.query;
+    const { page: rawPage, limit: rawLimit, status, tipoServico, area, dataInicio, dataFim } = req.query;
     const page = Math.max(1, parseInt(rawPage, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(rawLimit, 10) || 10));
+    const filters = { status, tipoServico, area, dataInicio, dataFim };
     const result = await medicaoService.getByObra(
       req.params.obraId,
       { page, limit },
       req.user.id,
       req.user.perfil,
-      req.user.obraAtual
+      req.user.obraAtual,
+      filters
     );
 
     const { pagination } = paginate(page, limit, result.total);
@@ -82,7 +92,15 @@ class MedicaoController {
       successResponse(
         result.data.map((m) => new MedicaoDTO(m)),
         "Medições listadas",
-        pagination
+        {
+          ...pagination,
+          statusSummary: result.statusSummary || {
+            enviada: 0,
+            aprovada: 0,
+            rejeitada: 0,
+            rascunho: 0,
+          },
+        }
       )
     );
   });

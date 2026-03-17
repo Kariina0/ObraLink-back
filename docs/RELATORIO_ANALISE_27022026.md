@@ -1,75 +1,103 @@
-﻿# Relatório técnico consolidado (arquivo histórico atualizado)
+﻿# Relatório técnico consolidado
 
-**Projeto:** Comunicação Ágil entre Escritório e Canteiro de Obras — Construtora RPG  
-**Data da revisão:** 15/03/2026  
+**Projeto:** ObraLink — Comunicação Ágil entre Escritório e Canteiro — Construtora RPG  
+**Data da revisão:** 15/03/2026 (atualizado em 17/03/2026)  
 **Escopo:** backend + frontend + integração API
 
-## 1) Conclusão executiva
+---
 
-O sistema implementado atende ao problema central de comunicação operacional com envio estruturado de dados de obra e fluxo de aprovação técnica. A arquitetura atual está funcional e consistente com os principais requisitos de negócio.
+## 1. Conclusão executiva
 
-## 2) Estado real da arquitetura
+O sistema atende ao problema central de comunicação operacional: envio estruturado de dados de obra, fluxo de aprovação técnica e operação em ambiente de baixa conectividade. A arquitetura está funcional e consistente com os principais requisitos de negócio.
+
+---
+
+## 2. Estado real da arquitetura
 
 ### Backend
 
-- Stack: Node.js, Express, Knex, SQLite, Joi, JWT, Multer, Sharp, Winston.
-- Padrão: Routes -> Controllers -> Services -> Repositories -> DB.
-- Banco principal em uso: SQLite (migrations versionadas).
+| Item | Detalhe |
+|------|---------|
+| Stack | Node.js, Express, Knex, SQLite, Joi, JWT, Multer, Sharp, Winston |
+| Padrão arquitetural | Routes → Controllers → Services → Repositories → DB |
+| Banco de dados | SQLite (migrations versionadas com Knex) |
+| Autenticação | JWT stateless com access/refresh token e rotação |
+| Autorização | RBAC por perfil (`admin`, `supervisor`, `encarregado`) |
 
 ### Frontend
 
-- Stack: React, React Router, Axios, idb (IndexedDB).
-- Controle de sessão por `AuthContext` e `PrivateRoute`.
-- Fila offline para sync (`syncQueue`) e arquivos (`db.js`).
+| Item | Detalhe |
+|------|---------|
+| Stack | React 19, React Router v6, Axios, idb (IndexedDB) |
+| Sessão | `AuthContext` + `PrivateRoute` com verificação de perfil |
+| Offline | `syncQueue.js` (fila de sync) e `db.js` (fila de arquivos) via IndexedDB |
+| Sync background | `SyncManager` componente disparado automaticamente ao reconectar |
 
-## 3) Endpoints reais mapeados
+---
 
-- `/api/auth/*` (login, refresh, logout, me, register, password reset)
-- `/api/obras/*`
-- `/api/measurements/*`
-- `/api/diarios/*`
-- `/api/solicitacoes/*`
-- `/api/files/*`
-- `/api/sync/*`
-- `/api/management/*`
-- `/api/health` e `/api/stats`
+## 3. Endpoints mapeados
 
-## 4) Comunicação frontend-backend
+| Domínio | Prefixo |
+|---------|---------|
+| Autenticação | `/api/auth/*` |
+| Obras | `/api/obras/*` |
+| Medições | `/api/measurements/*` |
+| Diário | `/api/diarios/*` |
+| Solicitações | `/api/solicitacoes/*` |
+| Arquivos | `/api/files/*` |
+| Sincronização | `/api/sync/*` |
+| Gestão | `/api/management/*` |
+| Utilitários | `/api/health`, `/api/stats` |
 
-Consumida por serviços do frontend:
+---
 
-- `medicoesService`: `/measurements` e `/measurements/minhas`
-- `diariosService`: `/diarios`
-- `purchasesService`: `/solicitacoes`
-- `filesService`: `/files/upload`
-- `managementService`: `/management/overview` e exportações CSV
-- `syncService`: `/sync/push` e `/sync/conflicts`
-- `api` interceptor: `/auth/refresh`
+## 4. Mapeamento de serviços frontend → endpoints backend
 
-## 5) Validação de aderência ao problema da construtora
+| Serviço frontend | Endpoints consumidos |
+|-----------------|---------------------|
+| `api.js` (interceptor) | `POST /auth/refresh` |
+| `authService.js` | `/auth/login`, `/auth/logout`, `/auth/me` |
+| `authRecoveryService.js` | `/auth/forgot-password`, `/auth/reset-password` |
+| `medicoesService.js` | `/measurements`, `/measurements/minhas` |
+| `diariosService.js` | `/diarios` |
+| `purchasesService.js` | `/solicitacoes`, `/solicitacoes/:id/aprovar|rejeitar` |
+| `filesService.js` | `/files/upload`, `/files/upload-multiple` |
+| `obrasService.js` | `/obras`, `/obras/:id/encarregados` |
+| `managementService.js` | `/management/overview`, exportações CSV |
+| `syncService.js` | `/sync/push`, `/sync/conflicts`, `/sync/pending` |
+| `usersService.js` | `/auth/register`, listagem de usuários |
 
-### Atraso no envio de medições
+---
 
-Atendido por fluxo de registro estruturado, aprovação por perfil e sincronização de fila local.
+## 5. Aderência ao problema da construtora
 
-### Atraso no envio de fotos
+| Problema original | Solução implementada | Status |
+|-------------------|---------------------|--------|
+| Atraso no envio de medições | Registro estruturado + aprovação por perfil + sync offline | ✅ Atendido |
+| Atraso no envio de fotos | Upload online/offline com metadados obrigatórios + sync automático | ✅ Atendido |
+| Diário de obra despadronizado | Endpoint e tela dedicada com validação de campos obrigatórios | ✅ Atendido |
+| Demora em solicitações de compra | Fluxo de criação, status e aprovação/rejeição por supervisão | ✅ Atendido |
+| Operação em baixa conectividade | Fila offline (IndexedDB) + reconciliação Last-Write-Wins | ✅ Atendido (com limitações) |
+| Rastreabilidade/auditoria | Soft delete, campos `aprovadoPor`, `dataAprovacao`, logs Winston | ✅ Atendido parcialmente |
 
-Atendido por upload online/offline, metadados obrigatórios e sincronização automática ao reconectar.
+---
 
-### Atraso no diário de obra
+## 6. Lacunas identificadas
 
-Atendido por endpoints e tela específica de diário com validação mínima de atividades.
+| # | Lacuna | Impacto | Prioridade |
+|---|--------|---------|------------|
+| 1 | PDF de boletim não implementado (`501`) | Relatório operacional indisponível | Média |
+| 2 | Tokens JWT em `localStorage` no frontend | Vulnerabilidade XSS residual | Alta |
+| 3 | Soft delete híbrido (coluna + metadata JSON) | Inconsistência em queries de auditoria | Alta |
+| 4 | Cobertura de testes incompleta (`obras`, `diarios`, `sync`) | Regressões não detectadas automaticamente | Média |
+| 5 | Sem especificação OpenAPI | Onboarding lento para novos desenvolvedores | Baixa |
 
-### Atraso em solicitações de compra
+---
 
-Atendido por fluxo de criação, status e aprovação/rejeição por supervisão/admin.
+## 7. Resultado final
 
-## 6) Lacunas atuais observadas
+O sistema está **apto para uso operacional** no cenário descrito e possui base técnica consistente para evolução incremental. As principais ações de curto prazo são:
 
-1. Exportação PDF ainda não implementada (`/management/exports/boletim.pdf` retorna `501`).
-2. Sessão do frontend ainda baseada em token em `localStorage`.
-3. Soft delete em padrão híbrido (coluna + metadata), com oportunidade de padronização.
-
-## 7) Resultado final da análise
-
-O sistema está apto para uso operacional no cenário descrito e possui base técnica consistente para evolução incremental com foco em segurança de sessão, governança LGPD e melhorias de observabilidade.
+1. Migrar sessão do frontend para cookies `httpOnly`
+2. Padronizar o soft delete para colunas dedicadas
+3. Ampliar cobertura de testes para todos os domínios de negócio

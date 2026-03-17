@@ -1,146 +1,179 @@
 # Regras de negócio implementadas
 
+> Referência de todas as regras aplicadas no backend (camada `services/`).  
+> Atualizado em 17/03/2026.
+
+---
+
 ## 1. Usuários, autenticação e segurança
 
 ### RN-01 — Perfis e autorização
 
 - Perfis válidos: `admin`, `supervisor`, `encarregado`.
-- Controle de acesso por `authorize(...)` nas rotas.
-- `encarregado` é restrito a dados próprios/vinculados; `admin` tem acesso total.
+- Controle de acesso por `authorize(perfis...)` nas rotas.
+- `encarregado` é restrito a dados próprios ou de obras vinculadas.
+- `admin` tem acesso irrestrito a todos os recursos.
+- `supervisor` pode visualizar e aprovar/rejeitar, mas não gerencia usuários.
 
 ### RN-02 — Senha e credenciais
 
-- Senha mínima: `8` caracteres.
-- Obrigatório: ao menos `1` maiúscula e `1` número.
-- Senhas e refresh tokens são salvos com hash `bcrypt`.
+- Comprimento mínimo: `8` caracteres.
+- Obrigatório: ao menos `1` letra maiúscula e `1` dígito numérico.
+- Senhas e refresh tokens armazenados com hash `bcrypt`.
+- Credenciais nunca são retornadas nos DTOs de usuário.
 
 ### RN-03 — Sessão JWT
 
-- Access token com validade padrão de `15m`.
-- Refresh token com validade padrão de `7d`.
-- Refresh token é rotacionado a cada renovação.
+- Access token: validade padrão de `15 min` (configurável por variável de ambiente).
+- Refresh token: validade padrão de `7 dias`.
+- Refresh token é **rotacionado** a cada renovação (antigo invalidado).
+- Token é validado pelo middleware `authenticate` em todas as rotas protegidas.
 
 ### RN-04 — Recuperação de senha
 
-- Fluxo por código numérico de 6 dígitos.
-- Código tem prazo de validade (`RESET_PASSWORD_TTL_MINUTES`).
-- Código não pode ser reutilizado.
+- Fluxo: solicitação → código numérico de 6 dígitos enviado → uso único para redefinir.
+- Código tem prazo de validade controlado por `RESET_PASSWORD_TTL_MINUTES`.
+- Código não pode ser reutilizado após uso bem-sucedido.
 
-### RN-05 — Rate limit
+### RN-05 — Rate limiting
 
-- Global: `100` req / `15 min` (configurável).
-- Login: `10` req / `15 min`.
-- Refresh: `30` req / `15 min`.
-- Forgot/reset: limites dedicados.
+| Rota | Limite |
+|------|--------|
+| Global | 100 req / 15 min |
+| `POST /auth/login` | 10 req / 15 min |
+| `POST /auth/refresh` | 30 req / 15 min |
+| `POST /auth/forgot-password` | Limite dedicado |
+| `POST /auth/reset-password` | Limite dedicado |
+
+---
 
 ## 2. Obras e vínculo de equipe
 
 ### RN-06 — Cadastro e manutenção de obra
 
-- Criação/edição/exclusão de obra: somente `admin`.
-- Código de obra deve ser único.
-- Código pode ser gerado automaticamente (`OBR-<timestamp>`).
+- Criação, edição e exclusão: somente `admin`.
+- Código de obra deve ser único no sistema.
+- Código pode ser gerado automaticamente com o padrão `OBR-<timestamp>` se omitido.
+- Exclusão é lógica (coluna `deletedAt`).
 
-### RN-07 — Vínculo obra x encarregado (N:N)
+### RN-07 — Vínculo obra ↔ encarregado (N:N)
 
-- Relação pela tabela `obra_encarregados`.
-- Chave única por par `(obraId, userId)`.
-- `encarregado` só visualiza obras às quais está vinculado.
+- Relação gerenciada pela tabela `obra_encarregados`.
+- Chave única por par `(obraId, userId)` — sem duplicatas.
+- `encarregado` só visualiza obras às quais está explicitamente vinculado.
+- Apenas `admin` adiciona ou remove vínculos.
+
+---
 
 ## 3. Medições
 
 ### RN-08 — Criação
 
-- `obra` e `itens` são obrigatórios.
-- `encarregado` só cria em obra vinculada.
-- `syncId` é gerado se ausente.
+- Campos obrigatórios: `obra`, `itens` (array com ao menos 1 item).
+- `encarregado` só pode criar medições em obras às quais está vinculado.
+- `syncId` é gerado automaticamente pelo backend se ausente na requisição.
 
-### RN-09 — Cálculo geométrico
+### RN-09 — Cálculo geométrico automático
 
-- Se `comprimento` e `largura` existem, backend calcula `areaCalculada = comprimento * largura`.
-- Se `altura` também existe, calcula `volume = comprimento * largura * altura`.
+- Se `comprimento` e `largura` fornecidos: `areaCalculada = comprimento × largura`.
+- Se `comprimento`, `largura` e `altura` fornecidos: `volume = comprimento × largura × altura`.
+- Cálculo realizado no backend — não aceito diretamente do cliente.
 
-### RN-10 — Aprovação/rejeição
+### RN-10 — Aprovação e rejeição
 
-- Somente `admin` e `supervisor` podem aprovar/rejeitar.
-- Aprovação registra `aprovadoPor` e `dataAprovacao`.
-- Rejeição pode armazenar motivo em `metadata`.
+- Somente `admin` e `supervisor` podem aprovar ou rejeitar.
+- Aprovação registra `aprovadoPor` (id do usuário) e `dataAprovacao`.
+- Rejeição armazena motivo em `metadata.motivoRejeicao`.
 
-### RN-11 — Edição/exclusão
+### RN-11 — Edição e exclusão
 
-- `encarregado` só altera/exclui medição própria.
-- Medição `aprovada` não pode ser editada por não-admin.
+- `encarregado` só altera/exclui medição criada por ele mesmo.
+- Medição com status `aprovada` não pode ser editada por `encarregado` nem `supervisor`.
+- Apenas `admin` pode editar medição aprovada em situações excepcionais.
+
+---
 
 ## 4. Diário de obra
 
 ### RN-12 — Registro diário
 
-- `obra` obrigatória.
-- `atividades` com pelo menos um item.
-- `clima` restrito ao enum (`ensolarado`, `nublado`, `chuvoso`, `ventania`, `instavel`).
-- Arrays estruturados são serializados em JSON no banco.
+- Campos obrigatórios: `obra`, `atividades` (array com ao menos 1 item).
+- `clima` restrito ao enum: `ensolarado | nublado | chuvoso | ventania | instavel`.
+- Arrays e objetos estruturados (atividades, equipe, ocorrências) são serializados em JSON no banco.
 
-### RN-13 — Acesso
+### RN-13 — Controle de acesso ao diário
 
-- `encarregado` vê e altera somente seus próprios diários.
-- `supervisor`/`admin` têm listagem ampliada.
+- `encarregado` visualiza e pode editar somente seus próprios registros.
+- `supervisor` e `admin` têm acesso a todos os diários das obras vinculadas.
+
+---
 
 ## 5. Solicitações de compra
 
 ### RN-14 — Criação de solicitação
 
-- `itens` obrigatório e com mínimo de 1 item.
-- Prioridade permitida: `baixa`, `media`, `alta`, `urgente`.
-- `valorTotal` calculado no backend como soma de `quantidade * valorUnitario`.
-- Status inicial: `pendente`.
+- Campo obrigatório: `itens` (array com ao menos 1 item contendo `quantidade` e `valorUnitario`).
+- `valorTotal` calculado exclusivamente no backend: `∑ (quantidade × valorUnitario)`.
+- Prioridade permitida: `baixa | media | alta | urgente`.
+- Status inicial: `pendente` (definido pelo sistema, nunca pelo cliente).
 
-### RN-15 — Aprovação/rejeição
+### RN-15 — Aprovação e rejeição
 
-- Somente `admin` e `supervisor`.
-- Aprovação preenche `aprovadoPor` e `dataAprovacao`.
-- Rejeição pode registrar `motivoRejeicao`.
+- Somente `admin` e `supervisor` podem aprovar ou rejeitar.
+- Aprovação registra `aprovadoPor` e `dataAprovacao`.
+- Rejeição pode registrar motivo em `motivoRejeicao`.
+
+---
 
 ## 6. Arquivos e fotos
 
 ### RN-16 — Regras de upload
 
 - Campos obrigatórios: `obra`, `tipoArquivo`, `descricao`.
-- Quando `tipoArquivo=problema`, `detalheProblema` é obrigatório.
-- Limite padrão por arquivo: `5 MB`.
-- Tipos permitidos padrão: JPEG, PNG, PDF.
+- Quando `tipoArquivo = problema`, o campo `detalheProblema` é obrigatório.
+- Limite padrão por arquivo: `5 MB` (configurável via `MAX_FILE_SIZE`).
+- Tipos permitidos padrão: `image/jpeg`, `image/png`, `application/pdf`.
 
-### RN-17 — Segurança de arquivo
+### RN-17 — Segurança no acesso a arquivos
 
-- Validação por magic bytes (`fileTypeValidator`).
-- Rota de acesso local autenticada: `/api/files/raw/:tipo/:filename`.
-- Proteção contra path traversal.
+- Todo arquivo é validado por **magic bytes** antes do armazenamento (`fileTypeValidator`).
+- Acesso a arquivos locais via `/api/files/raw/:tipo/:filename` exige autenticação.
+- Proteção contra **path traversal**: caracteres `..`, `/` e `\` no nome do arquivo são rejeitados.
 
 ### RN-18 — Compressão e armazenamento
 
-- Imagens podem ser comprimidas com `sharp`.
-- Storage configurável: `local` ou `supabase`.
-- Em Supabase, URL assinada é renovada nas listagens.
+- Imagens JPEG/PNG podem ser comprimidas com `sharp` (qualidade configurável por `IMAGE_COMPRESSION_QUALITY`).
+- Storage configurável: `local` (disco) ou `supabase` (nuvem).
+- Em Supabase, URLs assinadas são renovadas automaticamente nas listagens.
+
+---
 
 ## 7. Sincronização e baixa conectividade
 
-### RN-19 — Protocolo de sync
+### RN-19 — Protocolo de sincronização
 
 - Endpoints: `/api/sync/pending`, `/api/sync/push`, `/api/sync/conflicts`, `/api/sync/retry`.
-- Itens sincronizáveis exigem `syncId` e `clientTimestamp`.
+- Itens sincronizáveis exigem: `syncId` (UUID) e `clientTimestamp` (ISO 8601).
+- `syncId` é gerado no frontend antes do envio e persistido no backend.
 
 ### RN-20 — Resolução de conflito
 
-- Estratégia `Last-Write-Wins` baseada em timestamp cliente vs. servidor.
-- Resultado de `push` retorna listas de `success`, `conflicts`, `errors`.
+- Estratégia: **Last-Write-Wins** — o registro com `clientTimestamp` mais recente prevalece.
+- Resposta do endpoint `push` retorna três listas: `success`, `conflicts`, `errors`.
+- `conflicts` preserva ambas as versões para exibição opcional ao usuário.
+
+---
 
 ## 8. LGPD e rastreabilidade
 
 ### RN-21 — Exclusão lógica
 
-- O sistema prioriza exclusão lógica para preservar trilha operacional/auditoria.
-- Há uso de `deletedAt` em colunas e em `metadata` dependendo da entidade.
+- O sistema prioriza exclusão lógica para preservar trilha operacional e auditoria.
+- Uso de `deletedAt` (coluna) nas principais entidades; algumas usam `metadata.deletedAt`.
+- Registros excluídos logicamente não aparecem nas listagens padrão.
 
 ### RN-22 — Minimização de dados sensíveis
 
-- DTO de usuário não expõe senha/refresh token.
-- Exportação de dados de usuário remove credenciais sensíveis.
+- DTO de usuário (`UserDTO`) nunca expõe `senha` ou `refreshToken`.
+- Exportações de dados removem campos de credenciais.
+- Logs do Winston não devem registrar payloads com credenciais (prática configurada).

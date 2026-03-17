@@ -1,123 +1,128 @@
-# Plano de evolução do sistema — Construtora RPG
+# Plano de evolução do sistema — ObraLink
 
-Atualização técnica: 15/03/2026
-
-## 1) Diagnóstico de aderência ao problema
-
-### Problema original
-
-Comunicação lenta e não padronizada entre escritório e canteiro.
-
-### Como o sistema responde hoje
-
-- canal único de API para medições, diário, solicitações e arquivos
-- validação estruturada de dados de entrada
-- aprovação por supervisor/admin para medições e solicitações
-- sincronização em cenários de baixa conectividade (fila local no frontend + endpoints de sync)
-
-### Nível de atendimento atual
-
-| Objetivo | Situação atual |
-|---|---|
-| Envio ágil de medições | Atendido |
-| Envio ágil de fotos/arquivos | Atendido |
-| Diário de obra estruturado | Atendido |
-| Solicitações de compra com fluxo | Atendido |
-| Funcionamento com baixa conectividade | Atendido com limitações operacionais |
-| Segurança/LGPD | Atendido parcialmente |
-
-## 2) Restrições e riscos identificados
-
-1. Tokens em `localStorage` no frontend (risco em cenário XSS).
-2. Exclusão lógica heterogênea (`deletedAt` em coluna e/ou metadata JSON).
-3. Exportação PDF ainda indisponível (`501`).
-4. Cobertura de testes concentrada em alguns domínios (ainda pode ampliar).
-
-## 3) Plano de evolução priorizado
-
-### Fase A — Estabilidade e segurança (curto prazo)
-
-- Migrar sessão web para cookies `httpOnly` com refresh seguro.
-- Padronizar estratégia de soft delete por entidade crítica.
-- Consolidar tratamento de conflitos de sincronização com indicadores operacionais.
-
-### Fase B — Produtividade do escritório (médio prazo)
-
-- Implementar exportação PDF do boletim de medições.
-- Publicar especificação OpenAPI da API.
-- Incluir dashboard de integridade de sync (pendências/erros por obra).
-
-### Fase C — Governança e escala (médio/longo prazo)
-
-- Expandir testes automatizados para mais fluxos de negócio.
-- Definir política formal de retenção/anonimização LGPD.
-- Evoluir pipeline CI para bloquear merge sem lint/testes.
-
-## 4) Critérios de sucesso por fase
-
-### Fase A
-
-- 0 uso de token em `localStorage`.
-- 100% das consultas principais sem inconsistência de soft delete.
-
-### Fase B
-
-- PDF export disponível para uso de operação.
-- API documentada e consumível por terceiros sem reverse engineering.
-
-### Fase C
-
-- aumento mensurável da cobertura de testes.
-- checklist LGPD operacional adotado pelo time.
-
-## 5) Diretriz de execução
-
-Todas as evoluções devem manter os princípios do projeto:
-
-- facilidade de uso para perfis de baixa maturidade digital
-- operação em conectividade instável
-- sem dependência de novos equipamentos
-- integração com rotina real de obra
-- segurança da informação e LGPD
+> Atualização técnica: 17/03/2026
 
 ---
 
-## 6 — Roadmap de Implementação Recomendado
+## 1. Diagnóstico de aderência ao problema
 
-### Fase 1 — Estabilização (Prioridade Imediata)
+### Problema original
 
-Corrigir problemas que afetam o funcionamento básico e a segurança.
+Comunicação lenta e não padronizada entre escritório técnico e canteiro de obras.
 
-| Ordem | Item | Ref. | Complexidade |
-|-------|------|------|-------------|
-| 1 | Corrigir porta da API no `.env` do frontend | CC-01 | Baixa |
-| 2 | Atualizar manifest.json e index.html | CC-05 | Baixa |
-| 3 | Atualizar README do frontend | ME-08 | Baixa |
-| 4 | Adicionar rate limiting no login | CC-04 | Baixa |
-| 5 | Proteger uploads em produção | CC-02 | Média |
-| 6 | Corrigir soft delete de obras | CC-03 | Média |
-| 7 | Remover tabelas e código legado | ME-07 | Baixa |
+### Como o sistema responde hoje
 
-### Fase 2 — Funcionalidades Essenciais
+- Canal único de API para medições, diário, solicitações e arquivos
+- Validação estruturada de dados de entrada (Joi)
+- Fluxo de aprovação por `supervisor`/`admin` para medições e solicitações
+- Sincronização em cenários de baixa conectividade (fila local no frontend + endpoints `/api/sync/*`)
 
-Implementar funcionalidades ausentes que são críticas para o uso real.
+### Nível de atendimento atual
 
-| Ordem | Item | Ref. | Complexidade |
-|-------|------|------|-------------|
-| 8 | Implementar Diário de Obra (RDO) | EF-01 | Alta |
-| 9 | Implementar tela de reset de senha | EF-04 | Baixa |
-| 10 | Implementar PWA com Service Worker | ME-01 | Alta |
-| 11 | Implementar sincronização offline completa | ME-03 | Alta |
+| Objetivo | Situação |
+|----------|----------|
+| Envio ágil de medições | ✅ Atendido |
+| Envio ágil de fotos/arquivos | ✅ Atendido |
+| Diário de obra estruturado | ✅ Atendido |
+| Solicitações de compra com fluxo | ✅ Atendido |
+| Funcionamento com baixa conectividade | ⚠️ Atendido com limitações operacionais |
+| Segurança/LGPD | ⚠️ Atendido parcialmente |
 
-### Fase 3 — Segurança e Infraestrutura
+---
 
-Preparar o sistema para uso em produção real.
+## 2. Restrições e riscos identificados
 
-| Ordem | Item | Ref. | Complexidade |
-|-------|------|------|-------------|
-| 12 | Migrar para PostgreSQL em produção | ME-02 | Média |
-| 13 | Migrar tokens para httpOnly cookies | ME-04 | Alta |
-| 14 | Adicionar conformidade LGPD | EF-05 | Média |
+| # | Risco | Impacto | Status |
+|---|-------|---------|--------|
+| R1 | Tokens JWT em `localStorage` no frontend | XSS pode comprometer sessão | ⚠️ Pendente |
+| R2 | Soft delete híbrido (coluna + metadata JSON) | Inconsistência em queries | ⚠️ Pendente |
+| R3 | Exportação PDF indisponível (`501`) | Relatório operacional ausente | ⚠️ Pendente |
+| R4 | Cobertura de testes incompleta | Regressões não detectadas | ⚠️ Pendente |
+
+---
+
+## 3. Plano de evolução faseado
+
+### Fase A — Estabilidade e segurança (curto prazo)
+
+| Item | Ação | Prioridade |
+|------|------|------------|
+| Segurança de sessão | Migrar tokens para cookies `httpOnly` (backend + frontend) | Alta |
+| Soft delete | Padronizar `deletedAt` como coluna em todas as entidades críticas | Alta |
+| Sync observability | Consolidar tratamento de conflitos com indicadores por obra | Média |
+
+**Critério de sucesso:**
+- 0 uso de token em `localStorage`
+- 100% das consultas críticas sem dependência de `metadata` para soft delete
+
+---
+
+### Fase B — Produtividade do escritório (médio prazo)
+
+| Item | Ação | Prioridade |
+|------|------|------------|
+| PDF de boletim | Implementar `/api/management/exports/boletim.pdf` | Média |
+| OpenAPI | Publicar especificação com `swagger-jsdoc` + `swagger-ui-express` | Média |
+| Dashboard de sync | Endpoint `/api/sync/stats` + tela de integridade no frontend | Baixa |
+
+**Critério de sucesso:**
+- PDF de boletim disponível para uso operacional
+- API documentada e consumível por terceiros sem reverse engineering
+
+---
+
+### Fase C — Governança e escala (médio/longo prazo)
+
+| Item | Ação | Prioridade |
+|------|------|------------|
+| Cobertura de testes | Testes de integração para `obras`, `diarios`, `sync` | Alta |
+| LGPD | Política formal de retenção e anonimização de dados | Média |
+| CI pipeline | GitHub Actions: lint + testes + bloqueio de merge em falha | Média |
+| PostgreSQL | Migrar para PostgreSQL em produção (driver `pg` já configurado) | Baixa |
+
+**Critério de sucesso:**
+- Cobertura de integração em todos os domínios de negócio
+- Checklist LGPD operacional documentado e adotado
+
+---
+
+## 4. Diretrizes de execução
+
+Todas as evoluções devem respeitar os princípios fundadores do projeto:
+
+- **Acessibilidade:** facilidade de uso para perfis de baixa maturidade digital
+- **Resiliência:** operação plena em conectividade instável
+- **Baixo custo:** sem dependência de novos equipamentos ou infraestrutura cara
+- **Integração real:** funcionalidades alinhadas com a rotina de obra
+- **Segurança:** proteção de dados e conformidade com LGPD
+
+---
+
+## 5. Roadmap de implementação resumido
+
+### Fase 1 — Estabilização (prioridade imediata)
+
+| Ordem | Item | Complexidade |
+|-------|------|-------------|
+| 1 | Migrar tokens para cookies `httpOnly` | Alta |
+| 2 | Padronizar soft delete (coluna `deletedAt`) | Média |
+| 3 | Proteger uploads em produção (rota autenticada) | Média |
+
+### Fase 2 — Produtividade
+
+| Ordem | Item | Complexidade |
+|-------|------|-------------|
+| 4 | Implementar exportação PDF de boletim | Alta |
+| 5 | Publicar especificação OpenAPI | Média |
+| 6 | Pipeline CI (lint + testes) | Baixa |
+
+### Fase 3 — Escala e governança
+
+| Ordem | Item | Complexidade |
+|-------|------|-------------|
+| 7 | Ampliar cobertura de testes | Média |
+| 8 | Migrar para PostgreSQL em produção | Média |
+| 9 | Política LGPD formal | Média |
 | 15 | Adicionar testes automatizados frontend | ME-06 | Alta |
 
 ### Fase 4 — Evolução e Valor Agregado

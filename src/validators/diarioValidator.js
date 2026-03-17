@@ -25,8 +25,9 @@ const createDiarioSchema = Joi.object({
     "number.integer": "ID de obra inválido",
     "any.required": "Obra é obrigatória",
   }),
-  data: Joi.date().default(() => new Date()).messages({
+  data: Joi.date().max('now').default(() => new Date()).messages({
     "date.base": "Data inválida",
+    "date.max": "Não é permitido registrar diário com data futura",
   }),
   clima: Joi.string()
     .valid(...CLIMAS_VALIDOS)

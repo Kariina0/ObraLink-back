@@ -144,7 +144,7 @@ class MedicaoService {
     return medicao;
   }
 
-  async getByObra(obraId, options, userId, userPerfil, obraAtual) {
+  async getByObra(obraId, options, userId, userPerfil, obraAtual, filters = {}) {
     if (userPerfil === PERFIS.ENCARREGADO) {
       // Verificar vínculo pelo N:N
       const vinculado = await obraRepository.isEncarregadoVinculado(obraId, userId);
@@ -154,13 +154,16 @@ class MedicaoService {
         );
       }
 
-      return await medicaoRepository.findAll(
-        { obra: Number(obraId), responsavel: userId },
+      return await medicaoRepository.findAllFiltered(
+        { obra: Number(obraId), responsavel: userId, ...filters },
         options
       );
     }
 
-    return await medicaoRepository.findByObra(obraId, options);
+    return await medicaoRepository.findAllFiltered(
+      { obra: Number(obraId), ...filters },
+      options
+    );
   }
 
   async getByResponsavel(userId, options, filters = {}) {
@@ -168,10 +171,16 @@ class MedicaoService {
     const hasFilters = filters.obra || filters.status || filters.tipoServico
       || filters.area || filters.dataInicio || filters.dataFim;
 
+    const scopedFilters = { ...filters, responsavel: userId };
+    const statusSummary = await medicaoRepository.getStatusSummaryFiltered(scopedFilters);
+
     if (hasFilters) {
-      return await medicaoRepository.findByResponsavelFiltered(userId, filters, options);
+      const result = await medicaoRepository.findByResponsavelFiltered(userId, filters, options);
+      return { ...result, statusSummary };
     }
-    return await medicaoRepository.findByResponsavel(userId, options);
+
+    const result = await medicaoRepository.findByResponsavel(userId, options);
+    return { ...result, statusSummary };
   }
 
   async getAll(options, userPerfil, filters = {}) {
@@ -181,7 +190,12 @@ class MedicaoService {
         "Apenas supervisores e administradores podem listar todas as medições"
       );
     }
-    return await medicaoRepository.findAllFiltered(filters, options);
+    const [result, statusSummary] = await Promise.all([
+      medicaoRepository.findAllFiltered(filters, options),
+      medicaoRepository.getStatusSummaryFiltered(filters),
+    ]);
+
+    return { ...result, statusSummary };
   }
 
   async aprovar(medicaoId, userId, userPerfil) {

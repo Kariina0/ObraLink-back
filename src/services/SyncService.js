@@ -187,7 +187,7 @@ class SyncService {
   }
 
   /**
-   * Sincroniza uma medição (Last-Write-Wins)
+   * Sincroniza uma medição (Last-Write-Wins com proteção de status finais)
    */
   async syncMedicao(medicaoData, userId) {
     if (!medicaoData.syncId) {
@@ -198,6 +198,15 @@ class SyncService {
     const existing = await medicaoRepository.findBySyncId(medicaoData.syncId);
 
     if (existing) {
+      // Impede rollback de aprovação/rejeição por cliente offline
+      const FINAL_STATUSES = ["aprovada", "rejeitada"];
+      if (FINAL_STATUSES.includes(existing.status)) {
+        logger.info(
+          `Sync ignorado — medição ${medicaoData.syncId} já possui status final: ${existing.status}`,
+        );
+        return existing;
+      }
+
       // Resolver conflito usando Last-Write-Wins
       if (this._isClientNewer(medicaoData.clientTimestamp, existing)) {
         // Cliente mais recente, atualizar

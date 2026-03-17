@@ -6,24 +6,28 @@ class UserRepository extends BaseRepository {
   }
 
   async findByEmail(email) {
-    const { data, error } = await this.supabase
-      .from(this.table)
-      .select("*")
-      .eq("email", email)
-      .is("deletedAt", null)
-      .maybeSingle();
+    const { data, error } = await this._runWithDeletedAtFallback((withDeletedAt) => {
+      let query = this.supabase
+        .from(this.table)
+        .select("*")
+        .eq("email", email);
+      if (withDeletedAt) query = query.is("deletedAt", null);
+      return query.maybeSingle();
+    });
 
     if (error) throw error;
     return data ?? null;
   }
 
   async findByAuthId(authId) {
-    const { data, error } = await this.supabase
-      .from(this.table)
-      .select("*")
-      .eq("auth_id", authId)
-      .is("deletedAt", null)
-      .maybeSingle();
+    const { data, error } = await this._runWithDeletedAtFallback((withDeletedAt) => {
+      let query = this.supabase
+        .from(this.table)
+        .select("*")
+        .eq("auth_id", authId);
+      if (withDeletedAt) query = query.is("deletedAt", null);
+      return query.maybeSingle();
+    });
 
     if (error) throw error;
     if (!data) {

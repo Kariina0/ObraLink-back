@@ -15,7 +15,7 @@ class ObraController {
     const page  = rawPage  > 0  ? rawPage  : 1;
     const limit = rawLimit > 0 && rawLimit <= 100 ? rawLimit : 20;
     const options = { page, limit };
-    const filters = { status: req.query.status, responsavel: req.query.responsavel };
+    const filters = { status: req.query.status, responsavel: req.query.responsavel, q: req.query.q };
 
     const result = await obraService.list(filters, options, req.user.id, req.user.perfil);
     const { pagination } = paginate(page, limit, result.total);
@@ -110,6 +110,20 @@ class ObraController {
       req.user.perfil,
     );
     res.json(successResponse(new ObraDTO(obra), "Encarregado desvinculado com sucesso"));
+  });
+
+  /**
+   * @route PATCH /api/obras/:id/status
+   * @desc Atualizar status da obra (com registro de dataTermino quando concluída)
+   * @access Admin
+   */
+  updateStatus = asyncHandler(async (req, res) => {
+    const obra = await obraService.updateStatus(
+      req.params.id,
+      req.body,
+      req.user.perfil,
+    );
+    res.json(successResponse(new ObraDTO(obra), "Status da obra atualizado com sucesso"));
   });
 }
 

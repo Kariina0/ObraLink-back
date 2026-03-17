@@ -31,6 +31,14 @@ router.get(
 router.post("/", validate(createDiarioSchema), diarioController.create);
 
 /**
+ * @route GET /api/diarios/check
+ * @desc Verifica duplicidade: existe diário para obra+data?
+ * @access Private
+ * @query obra, data
+ */
+router.get("/check", diarioController.check);
+
+/**
  * @route GET /api/diarios/minhas
  * @desc Listar diários do usuário logado com paginação
  * @access Private

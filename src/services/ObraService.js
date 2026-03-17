@@ -1,5 +1,7 @@
 const obraRepository = require("../repositories/ObraRepository");
 const userRepository = require("../repositories/UserRepository");
+const medicaoRepository = require("../repositories/MedicaoRepository");
+const diarioRepository = require("../repositories/DiarioRepository");
 const {
   NotFoundError,
   ForbiddenError,
@@ -81,25 +83,45 @@ class ObraService {
   }
 
   /**
-   * Remove uma obra (soft delete). Apenas ADMIN.
+   * Remove uma obra (soft delete via coluna deletedAt). Apenas ADMIN.
+   * Bloqueia remoção se a obra possui medições ou diários vinculados.
    */
   async delete(obraId, userId, userPerfil) {
     if (userPerfil !== PERFIS.ADMIN) {
       throw new ForbiddenError("Apenas administradores podem remover obras");
     }
 
+    await obraRepository.findById(obraId); // lança NotFoundError se não existir
+
+    // Verifica dependências antes de excluir
+    const [medicoes, diarios] = await Promise.all([
+      medicaoRepository.findAll({ obra: obraId }, { page: 1, limit: 1 }),
+      diarioRepository.findAll({ obra: obraId }, { page: 1, limit: 1 }),
+    ]);
+
+    const partes = [];
+    if ((medicoes.total ?? 0) > 0) partes.push(`${medicoes.total} medição(ões)`);
+    if ((diarios.total  ?? 0) > 0) partes.push(`${diarios.total} diário(s)`);
+    if (partes.length > 0) {
+      throw new ValidationError(
+        `Não é possível remover esta obra: ela possui ${partes.join(" e ")} vinculados. ` +
+        "Remova ou transfira esses registros antes de excluir a obra.",
+      );
+    }
+
+    // Preserva audit trail no metadata e define deletedAt na coluna real
     const obra = await obraRepository.findById(obraId);
     const meta = this._parseMeta(obra.metadata);
-    meta.deletedAt = new Date();
     meta.deletedBy = userId;
 
     try {
-      await obraRepository.update(obraId, { metadata: JSON.stringify(meta) });
+      await obraRepository.update(obraId, {
+        deletedAt: new Date().toISOString(),
+        metadata: JSON.stringify(meta),
+      });
     } catch (err) {
-      // BaseRepository.update() chama findById() ao final para retornar o registro
-      // atualizado. Após o soft delete, findById() aplica _applyNotDeleted() e não
-      // encontra mais a obra (agora filtrada como deletada), lançando NotFoundError.
-      // Esse erro é esperado e indica sucesso — a gravação do deletedAt foi concluída.
+      // RLS pode ocultar a linha após deletedAt ser definido no SELECT pós-UPDATE.
+      // NotFoundError aqui indica sucesso — a gravação foi concluída.
       if (!(err instanceof NotFoundError)) throw err;
     }
 
@@ -127,28 +149,54 @@ class ObraService {
   }
 
   /**
-   * Lista obras com paginação e filtros.
+   * Lista obras com paginação, filtros e busca textual por nome.
    * Encarregado vê apenas as obras às quais está vinculado.
    */
   async list(filters, options, userId, userPerfil) {
     if (userPerfil === PERFIS.ENCARREGADO) {
-      return await obraRepository.findByEncarregado(userId, {
+      const result = await obraRepository.findByEncarregado(userId, {
         ...options,
         status: filters.status,
       });
+      // Hidratar encarregados para o encarregado também ver os vínculos da obra
+      const obraIds = result.data.map((o) => o.id);
+      const encMap  = await obraRepository.listarEncarregadosBatch(obraIds);
+      const data    = result.data.map((o) => ({ ...o, encarregados: encMap[o.id] || [] }));
+      return { ...result, data };
     }
 
-    const filter = {};
-    if (filters.status) filter.status = filters.status;
-    if (filters.responsavel) filter.responsavel = filters.responsavel;
-
-    const result = await obraRepository.findAll(filter, options);
+    // Admin/Supervisor: usa busca textual se fornecida
+    const result = await obraRepository.findAllWithSearch(
+      { status: filters.status, responsavel: filters.responsavel },
+      options,
+      filters.q || null,
+    );
 
     // Hidratar encarregados em lote (uma única query ao invés de N queries)
     const obraIds = result.data.map((o) => o.id);
-    const encMap = await obraRepository.listarEncarregadosBatch(obraIds);
-    const data = result.data.map((o) => ({ ...o, encarregados: encMap[o.id] || [] }));
+    const encMap  = await obraRepository.listarEncarregadosBatch(obraIds);
+    const data    = result.data.map((o) => ({ ...o, encarregados: encMap[o.id] || [] }));
     return { ...result, data };
+  }
+
+  /**
+   * Atualiza apenas o status da obra. Ao concluir, registra dataTermino se fornecida.
+   * Apenas ADMIN.
+   */
+  async updateStatus(obraId, body, userPerfil) {
+    if (userPerfil !== PERFIS.ADMIN) {
+      throw new ForbiddenError("Apenas administradores podem alterar o status da obra");
+    }
+
+    await obraRepository.findById(obraId); // lança NotFoundError se não existir
+
+    const updates = { status: body.status };
+    if (body.status === STATUS_OBRA.CONCLUIDA && body.dataTermino) {
+      updates.dataTermino = body.dataTermino;
+    }
+
+    await obraRepository.update(obraId, updates);
+    return await this._hydrate(obraId);
   }
 
   /**

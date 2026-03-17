@@ -13,6 +13,19 @@ const { PERFIS } = require("../constants");
 router.use(authenticate);
 
 /**
+ * Middleware para validar :id como inteiro positivo, evitando consultas
+ * desnecessárias ao banco com valores inválidos (ex: 'abc', '-1').
+ */
+const validateIntId = (req, res, next) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ success: false, message: "ID inválido" });
+  }
+  req.params.id = id;
+  next();
+};
+
+/**
  * @route GET /api/measurements
  * @desc Listar todas as medições (supervisor/admin)
  * @access Supervisor, Admin
@@ -45,14 +58,14 @@ router.get("/obra/:obraId", medicaoController.getByObra);
  * @desc Obter medição por ID
  * @access Private
  */
-router.get("/:id", medicaoController.getById);
+router.get("/:id", validateIntId, medicaoController.getById);
 
 /**
  * @route PUT /api/measurements/:id
  * @desc Atualizar medição
  * @access Private
  */
-router.put("/:id", validate(updateMedicaoSchema), medicaoController.update);
+router.put("/:id", validateIntId, validate(updateMedicaoSchema), medicaoController.update);
 
 /**
  * @route POST /api/measurements/:id/aprovar
@@ -61,6 +74,7 @@ router.put("/:id", validate(updateMedicaoSchema), medicaoController.update);
  */
 router.post(
   "/:id/aprovar",
+  validateIntId,
   authorize(PERFIS.SUPERVISOR, PERFIS.ADMIN),
   medicaoController.aprovar
 );
@@ -72,6 +86,7 @@ router.post(
  */
 router.post(
   "/:id/rejeitar",
+  validateIntId,
   authorize(PERFIS.SUPERVISOR, PERFIS.ADMIN),
   medicaoController.rejeitar
 );
@@ -79,8 +94,8 @@ router.post(
 /**
  * @route DELETE /api/measurements/:id
  * @desc Excluir medição (soft delete)
- * @access Private
+ * @access Dono da medição ou Admin
  */
-router.delete("/:id", medicaoController.delete);
+router.delete("/:id", validateIntId, authorize(PERFIS.ENCARREGADO, PERFIS.SUPERVISOR, PERFIS.ADMIN), medicaoController.delete);
 
 module.exports = router;

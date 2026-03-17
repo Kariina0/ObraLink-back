@@ -99,10 +99,9 @@ class AuthService {
   }
 
   async changePassword(userId, senhaAtual, novaSenha) {
-    const existing = await userRepository.findById(userId);
-    if (!existing) throw new ValidationError("Usuário não encontrado");
+    const user = await userRepository.findById(userId);
+    if (!user) throw new ValidationError("Usuário não encontrado");
 
-    const user = await userRepository.findByEmail(existing.email);
     const isPasswordValid = await bcrypt.compare(String(senhaAtual), String(user.senha || ""));
     if (!isPasswordValid) throw new ValidationError("Senha atual incorreta");
 
@@ -144,7 +143,10 @@ class AuthService {
 
     const result = { message: genericMessage };
 
-    if (process.env.NODE_ENV !== "production") {
+    if (
+      process.env.NODE_ENV !== "production" &&
+      process.env.EXPOSE_DEV_CODES === "true"
+    ) {
       result.devResetCode = resetCode;
       result.expiresAt = expiresAt.toISOString();
     }

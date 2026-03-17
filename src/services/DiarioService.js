@@ -3,6 +3,7 @@ const obraRepository   = require("../repositories/ObraRepository");
 const {
   NotFoundError,
   ForbiddenError,
+  ConflictError,
 } = require("../utils/errors");
 const { generateSyncId } = require("../utils/helpers");
 const { PERFIS } = require("../constants");
@@ -33,6 +34,7 @@ class DiarioService {
   /**
    * Cria um novo registro de Diário de Obra.
    * Encarregados só podem registrar diários em obras às quais estão vinculados.
+   * Impede duplicidade: apenas um diário por obra por dia.
    */
   async create(diarioData, userId, userPerfil) {
     // Verificar se obra existe
@@ -54,6 +56,22 @@ class DiarioService {
       }
     }
 
+    // Impede cadastro de diário com data futura
+    const dataRegistro = diarioData.data ? new Date(diarioData.data) : new Date();
+    const hoje = new Date();
+    hoje.setHours(23, 59, 59, 999);
+    if (dataRegistro > hoje) {
+      throw new ConflictError("Não é possível registrar diário com data futura");
+    }
+
+    // Impede duplicidade: um diário por obra por dia
+    const existente = await diarioRepository.findByData(diarioData.obra, dataRegistro);
+    if (existente) {
+      throw new ConflictError(
+        "Já existe um diário registrado para esta obra nesta data",
+      );
+    }
+
     // Gerar syncId se não fornecido
     if (!diarioData.syncId) {
       diarioData.syncId = generateSyncId();
@@ -65,29 +83,49 @@ class DiarioService {
     const payload = this._serialize(diarioData);
     const created = await diarioRepository.create(payload);
     const newId = created.id || created._id || created;
-    return await diarioRepository.findById(newId);
+    return await diarioRepository.findByIdWithNames(newId);
   }
 
   /**
    * Lista diários do usuário logado com paginação.
    * Suporta filtros: obra, dataInicio, dataFim.
    */
-  async getByResponsavel(userId, { page = 1, limit = 10 } = {}) {
-    return await diarioRepository.findAll({ responsavel: userId }, { page, limit });
+  async getByResponsavel(userId, { page = 1, limit = 10, obra, dataInicio, dataFim } = {}) {
+    if (dataInicio || dataFim) {
+      const inicio = dataInicio ? new Date(dataInicio) : new Date("2000-01-01");
+      const fim    = dataFim   ? new Date(dataFim)    : new Date();
+      fim.setHours(23, 59, 59, 999);
+
+      const obraId = obra ? Number(obra) : null;
+      return await diarioRepository.findByPeriodoResponsavel(userId, inicio, fim, { page, limit, obraId });
+    }
+
+    const filters = { responsavel: userId };
+    if (obra) filters.obra = Number(obra);
+    return await diarioRepository.findAllWithNames(filters, { page, limit });
   }
 
   /**
    * Lista todos os diários (supervisor/admin).
-   * Suporta filtros: obra, page, limit.
+   * Suporta filtros: obra, dataInicio, dataFim, page, limit.
    */
-  async getAll({ page = 1, limit = 10, obra } = {}) {
+  async getAll({ page = 1, limit = 10, obra, dataInicio, dataFim } = {}) {
+    if (dataInicio || dataFim) {
+      const inicio = dataInicio ? new Date(dataInicio) : new Date("2000-01-01");
+      const fim    = dataFim   ? new Date(dataFim)    : new Date();
+      fim.setHours(23, 59, 59, 999);
+
+      const obraId = obra ? Number(obra) : null;
+      return await diarioRepository.findByPeriodoGlobal(inicio, fim, { page, limit, obraId });
+    }
+
     const filters = obra ? { obra: Number(obra) } : {};
-    return await diarioRepository.findAll(filters, { page, limit });
+    return await diarioRepository.findAllWithNames(filters, { page, limit });
   }
 
   /** Retorna um diário por ID. */
   async getById(diarioId, userId, userPerfil) {
-    const diario = await diarioRepository.findById(diarioId);
+    const diario = await diarioRepository.findByIdWithNames(diarioId);
 
     // Encarregado só visualiza seus próprios diários
     if (
@@ -112,12 +150,33 @@ class DiarioService {
       throw new ForbiddenError("Você não tem permissão para editar este diário");
     }
 
+    // Se a data foi alterada, verificar duplicidade na nova data
+    if (diarioData.data) {
+      const novaData = new Date(diarioData.data);
+      const hoje = new Date();
+      hoje.setHours(23, 59, 59, 999);
+      if (novaData > hoje) {
+        throw new ConflictError("Não é possível registrar diário com data futura");
+      }
+
+      // Verifica duplicidade apenas se a data mudou
+      const dataAtual = new Date(diario.data);
+      if (novaData.toDateString() !== dataAtual.toDateString()) {
+        const existente = await diarioRepository.findByData(diario.obra, novaData);
+        if (existente && existente.id !== Number(diarioId)) {
+          throw new ConflictError(
+            "Já existe um diário registrado para esta obra nesta data",
+          );
+        }
+      }
+    }
+
     const payload = this._serialize(diarioData);
     await diarioRepository.update(diarioId, payload);
-    return await diarioRepository.findById(diarioId);
+    return await diarioRepository.findByIdWithNames(diarioId);
   }
 
-  /** Remove um diário (soft delete via metadata). */
+  /** Remove um diário (soft delete via coluna deletedAt). */
   async delete(diarioId, userId, userPerfil) {
     const diario = await diarioRepository.findById(diarioId);
 
@@ -129,14 +188,17 @@ class DiarioService {
       throw new ForbiddenError("Você não tem permissão para excluir este diário");
     }
 
-    const meta = (() => {
-      try { return JSON.parse(diario.metadata || "{}"); } catch { return {}; }
-    })();
-    meta.deletedAt = new Date().toISOString();
-    meta.deletedBy = userId;
-
-    await diarioRepository.update(diarioId, { metadata: JSON.stringify(meta) });
+    await diarioRepository.update(diarioId, { deletedAt: new Date().toISOString() });
     return { deleted: true };
+  }
+
+  /**
+   * Verifica se já existe um diário para uma obra em uma data específica.
+   * Usado pelo frontend antes de submeter o formulário.
+   */
+  async checkDuplicata(obraId, data) {
+    const existente = await diarioRepository.findByData(obraId, new Date(data));
+    return { exists: !!existente, id: existente?.id ?? null };
   }
 }
 

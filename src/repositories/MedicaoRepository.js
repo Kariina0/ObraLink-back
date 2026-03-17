@@ -5,6 +5,58 @@ class MedicaoRepository extends BaseRepository {
     super("medicoes");
   }
 
+  _applyMeasurementFilters(query, filters = {}) {
+    if (filters.obra) {
+      query = query.eq("obra", Number(filters.obra));
+    }
+    if (filters.responsavel) {
+      query = query.eq("responsavel", Number(filters.responsavel));
+    }
+    if (filters.status) {
+      query = query.eq("status", filters.status);
+    }
+    if (filters.area) {
+      query = query.eq("area", filters.area);
+    }
+    if (filters.tipoServico) {
+      query = query.eq("tipoServico", filters.tipoServico);
+    }
+    if (filters.dataInicio) {
+      query = query.gte("data", new Date(filters.dataInicio).toISOString());
+    }
+    if (filters.dataFim) {
+      query = query.lte("data", new Date(filters.dataFim).toISOString());
+    }
+
+    return query;
+  }
+
+  async getStatusSummaryFiltered(filters = {}) {
+    const statuses = ["enviada", "aprovada", "rejeitada", "rascunho"];
+
+    const counts = await Promise.all(
+      statuses.map(async (status) => {
+        const { count, error } = await this._runWithDeletedAtFallback((withDeletedAt) => {
+          let query = this.supabase
+            .from(this.table)
+            .select("id", { count: "exact", head: true });
+
+          query = this._applyMeasurementFilters(query, { ...filters, status });
+          if (withDeletedAt) {
+            query = query.is("deletedAt", null);
+          }
+
+          return query;
+        });
+
+        if (error) throw error;
+        return [status, count ?? 0];
+      })
+    );
+
+    return Object.fromEntries(counts);
+  }
+
   async findBySyncId(syncId) {
     return this.findOne({ syncId });
   }
@@ -76,29 +128,7 @@ class MedicaoRepository extends BaseRepository {
       .select("*", { count: "exact" })
       .is("deletedAt", null);
 
-    if (filters.obra) {
-      query = query.eq("obra", Number(filters.obra));
-    }
-    if (filters.responsavel) {
-      query = query.eq("responsavel", Number(filters.responsavel));
-    }
-    if (filters.status) {
-      query = query.eq("status", filters.status);
-    }
-    if (filters.area) {
-      query = query.eq("area", filters.area);
-    }
-    if (filters.tipoServico) {
-      query = query.eq("tipoServico", filters.tipoServico);
-    }
-    if (filters.dataInicio) {
-      const dataInicioIso = new Date(filters.dataInicio).toISOString();
-      query = query.gte("data", dataInicioIso);
-    }
-    if (filters.dataFim) {
-      const dataFimIso = new Date(filters.dataFim).toISOString();
-      query = query.lte("data", dataFimIso);
-    }
+    query = this._applyMeasurementFilters(query, filters);
 
     query = query.order("created_at", { ascending: false }).range(offset, offset + limit - 1);
 

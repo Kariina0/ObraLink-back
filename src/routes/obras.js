@@ -7,6 +7,7 @@ const {
   createObraSchema,
   updateObraSchema,
   vincularEncarregadoSchema,
+  updateStatusSchema,
 } = require("../validators/obraValidator");
 const { PERFIS } = require("../constants");
 
@@ -90,6 +91,13 @@ router.delete(
   "/:id/encarregados/:userId",
   authorize(PERFIS.ADMIN),
   obraController.desvincularEncarregado,
+);
+
+router.patch(
+  "/:id/status",
+  authorize(PERFIS.ADMIN),
+  validate(updateStatusSchema),
+  obraController.updateStatus,
 );
 
 module.exports = router;

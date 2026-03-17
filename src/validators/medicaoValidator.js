@@ -33,14 +33,17 @@ const createMedicaoSchema = Joi.object({
     inicio: Joi.date(),
     fim: Joi.date(),
   }),
-  area: Joi.string().trim().max(100).allow("", null).messages({
+  area: Joi.string().trim().max(100).required().messages({
+    "string.empty": "Selecione a área (ambiente) da medição",
+    "any.required": "Área da medição é obrigatória",
     "string.max": "Nome da área deve ter no máximo 100 caracteres",
   }),
   tipoServico: Joi.string()
     .valid(...TIPOS_SERVICO)
-    .allow("", null)
+    .required()
     .messages({
       "any.only": `Tipo de serviço deve ser um dos seguintes: ${TIPOS_SERVICO.join(", ")}`,
+      "any.required": "Tipo de serviço é obrigatório",
     }),
   // Dimensões brutas — preservadas individualmente para consultas futuras
   comprimento: Joi.number().min(0).allow(null).messages({

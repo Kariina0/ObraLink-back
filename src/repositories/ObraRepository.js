@@ -187,6 +187,7 @@ class ObraRepository extends BaseRepository {
   /**
    * Retorna usuários ativos ainda não vinculados à obra como encarregados.
    * Usado para popular o seletor de adição de encarregados no frontend.
+   * Administradores são excluídos da lista — não devem ser vinculados como encarregados.
    */
   async listarDisponiveisParaObra(obraId) {
     const { data: vinculos } = await this.supabase
@@ -200,6 +201,7 @@ class ObraRepository extends BaseRepository {
       .from("users")
       .select("id, nome, email, perfil")
       .is("deletedAt", null)
+      .neq("perfil", "admin")
       .order("nome", { ascending: true });
 
     if (linkedIds.length > 0) {
@@ -209,6 +211,32 @@ class ObraRepository extends BaseRepository {
     const { data, error } = await query;
     if (error) throw error;
     return data ?? [];
+  }
+
+  /**
+   * Busca obras com filtros opcionais e suporte a busca textual por nome (ilike).
+   * Substitui findAll no contexto de listagem pública de obras.
+   */
+  async findAllWithSearch(filters = {}, options = {}, q = null) {
+    const { page = 1, limit = 20 } = options;
+    const offset = (page - 1) * limit;
+
+    const { data, error, count } = await this._runWithDeletedAtFallback((withDeletedAt) => {
+      let query = this.supabase
+        .from(this.table)
+        .select("*", { count: "exact" });
+      if (withDeletedAt) query = this._applyNotDeleted(query);
+      if (filters.status)      query = query.eq("status", filters.status);
+      if (filters.responsavel) query = query.eq("responsavel", Number(filters.responsavel));
+      if (q)                   query = query.ilike("nome", `%${q}%`);
+      query = query
+        .range(offset, offset + limit - 1)
+        .order("created_at", { ascending: false });
+      return query;
+    });
+
+    if (error) throw error;
+    return { data: data ?? [], total: count ?? 0, page, limit };
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
