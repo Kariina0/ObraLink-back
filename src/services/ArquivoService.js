@@ -30,6 +30,7 @@ class ArquivoService {
       coordenadas,
       solicitadoPor,
       detalheProblema,
+      syncId,
     } = metadata;
     const tipoNormalizado = tipo || "outros";
 
@@ -135,7 +136,7 @@ class ArquivoService {
         storage_provider: "supabase",
         storage_path: storagePath,
         storage_url: storageUrl,
-        syncId: generateSyncId(),
+        syncId: syncId || generateSyncId(),
         metadata: JSON.stringify({ createdBy: userId }),
       };
 
@@ -178,62 +179,86 @@ class ArquivoService {
 
     if (file.mimetype.startsWith("image/")) {
       try {
-        const parsedPath = path.parse(file.path);
-        const compressedPath = path.join(
-          path.dirname(file.path),
-          `compressed-${parsedPath.name}.jpg`,
-        );
+        // Suporta dois fluxos: diskStorage (file.path) e memoryStorage (file.buffer).
+        let imgMeta;
+        let stats;
+        let compressedPath;
 
-        await sharp(file.path)
-          .jpeg({
-            quality: parseInt(process.env.IMAGE_COMPRESSION_QUALITY) || 80,
-          })
-          .toFile(compressedPath);
+        if (file.path) {
+          const parsedPath = path.parse(file.path);
+          compressedPath = path.join(
+            path.dirname(file.path),
+            `compressed-${parsedPath.name}.jpg`,
+          );
 
-        const imgMeta = await sharp(compressedPath).metadata();
-        const stats = await fs.stat(compressedPath);
+          await sharp(file.path)
+            .jpeg({ quality: parseInt(process.env.IMAGE_COMPRESSION_QUALITY) || 80 })
+            .toFile(compressedPath);
 
-        if (stats.size < file.size) {
-          await fs.unlink(file.path);
-          processedPath = compressedPath;
-          comprimido = true;
-          storedMimeType = "image/jpeg";
-        } else {
-          await fs.unlink(compressedPath);
+          imgMeta = await sharp(compressedPath).metadata();
+          stats = await fs.stat(compressedPath);
+
+          if (stats.size < file.size) {
+            await fs.unlink(file.path).catch(() => {});
+            processedPath = compressedPath;
+            comprimido = true;
+            storedMimeType = "image/jpeg";
+          } else {
+            await fs.unlink(compressedPath).catch(() => {});
+          }
+        } else if (file.buffer) {
+          // Escrever buffer comprimido em arquivo temporário
+          const tmpDir = require("os").tmpdir();
+          const { v4: uuidv4 } = require("uuid");
+          compressedPath = path.join(tmpDir, `compressed-${uuidv4()}.jpg`);
+
+          const compressedBuffer = await sharp(file.buffer)
+            .jpeg({ quality: parseInt(process.env.IMAGE_COMPRESSION_QUALITY) || 80 })
+            .toBuffer();
+
+          await fs.writeFile(compressedPath, compressedBuffer);
+          imgMeta = await sharp(compressedPath).metadata();
+          stats = await fs.stat(compressedPath);
+
+          if (stats.size < file.size) {
+            processedPath = compressedPath;
+            comprimido = true;
+            storedMimeType = "image/jpeg";
+          } else {
+            // compressão não melhorou — manter buffer original (sem arquivo temporário)
+            await fs.unlink(compressedPath).catch(() => {});
+          }
         }
 
-        const arquivoData = {
-          nome: path.basename(processedPath),
-          nomeOriginal: file.originalname,
-          caminho: processedPath,
-          url: `/api/files/raw/${tipoNormalizado}/${path.basename(processedPath)}`,
-          tipo: tipoNormalizado,
-          tipoArquivo: tipoArquivo || null,
-          mimeType: storedMimeType,
-          tamanho: comprimido ? stats.size : file.size,
-          tamanhoOriginal,
-          dimensoes: JSON.stringify({
-            largura: imgMeta.width,
-            altura: imgMeta.height,
-          }),
-          coordenadas: coordenadas ? JSON.stringify(coordenadas) : null,
-          descricao: descricao || null,
-          detalheProblema: detalheProblema || null,
-          solicitadoPor: solicitadoPor ? Number(solicitadoPor) : null,
-          tags: tags
-            ? JSON.stringify(tags.split(",").map((t) => t.trim()))
-            : null,
-          obra: obra || null,
-          uploadedBy: userId,
-          comprimido,
-          storage_provider: "local",
-          storage_path: null,
-          storage_url: null,
-          syncId: generateSyncId(),
-          metadata: JSON.stringify({ createdBy: userId }),
-        };
+        if (processedPath) {
+          const arquivoData = {
+            nome: path.basename(processedPath),
+            nomeOriginal: file.originalname,
+            caminho: processedPath,
+            url: `/api/files/raw/${tipoNormalizado}/${path.basename(processedPath)}`,
+            tipo: tipoNormalizado,
+            tipoArquivo: tipoArquivo || null,
+            mimeType: storedMimeType,
+            tamanho: comprimido ? stats.size : file.size,
+            tamanhoOriginal,
+            dimensoes: JSON.stringify({ largura: imgMeta?.width, altura: imgMeta?.height }),
+            coordenadas: coordenadas ? JSON.stringify(coordenadas) : null,
+            descricao: descricao || null,
+            detalheProblema: detalheProblema || null,
+            solicitadoPor: solicitadoPor ? Number(solicitadoPor) : null,
+            tags: tags ? JSON.stringify(tags.split(",").map((t) => t.trim())) : null,
+            obra: obra || null,
+            uploadedBy: userId,
+            comprimido,
+            storage_provider: "local",
+            storage_path: null,
+            storage_url: null,
+            syncId: syncId || generateSyncId(),
+            metadata: JSON.stringify({ createdBy: userId }),
+          };
 
-        return await arquivoRepository.create(arquivoData);
+          return await arquivoRepository.create(arquivoData);
+        }
       } catch (err) {
         logger.error("Erro ao comprimir imagem (modo local):", err);
       }
@@ -261,7 +286,7 @@ class ArquivoService {
       storage_provider: "local",
       storage_path: null,
       storage_url: null,
-      syncId: generateSyncId(),
+      syncId: syncId || generateSyncId(),
       metadata: JSON.stringify({ createdBy: userId }),
     };
 

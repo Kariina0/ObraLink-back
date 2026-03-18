@@ -62,10 +62,12 @@ const upload = multer({
 const cleanupOnError = (req, res, next) => {
   if (!isSupabase) {
     res.on("finish", () => {
-      if (res.statusCode >= 400 && req.files) {
-        const files = Array.isArray(req.files)
-          ? req.files
-          : Object.values(req.files).flat();
+      if (res.statusCode >= 400 && (req.file || req.files)) {
+        const files = req.file
+          ? [req.file]
+          : Array.isArray(req.files)
+            ? req.files
+            : Object.values(req.files).flat();
         files.forEach((file) => {
           if (file.path) {
             fs.unlink(file.path, (err) => {

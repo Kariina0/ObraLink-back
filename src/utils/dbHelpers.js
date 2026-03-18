@@ -13,8 +13,14 @@
  */
 function isMissingDeletedAtColumn(error) {
   const message = String(error?.message || "").toLowerCase();
+  // Detecta situações diferentes dependendo do DB/driver:
+  // - PostgreSQL/Supabase: "deletedAt" + "does not exist"
+  // - SQLite (em testes/local): pode falhar ao interpretar operator ::jsonb (unrecognized token ":")
+  // - Alguns drivers retornam "no such column"
   return (
-    message.includes("deletedat") && message.includes("does not exist")
+    (message.includes("deletedat") && (message.includes("does not exist") || message.includes("no such column"))) ||
+    message.includes("unrecognized token") ||
+    message.includes("jsonb")
   );
 }
 

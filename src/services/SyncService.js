@@ -4,6 +4,7 @@ const solicitacaoCompraRepository = require("../repositories/SolicitacaoCompraRe
 const arquivoRepository = require("../repositories/ArquivoRepository");
 const { retryWithBackoff } = require("../utils/helpers");
 const logger = require("../utils/logger");
+const { ValidationError } = require("../utils/errors");
 
 // Import lazy para evitar dependência circular (ArquivoService → SyncService)
 const _getArquivoService = () => require("./ArquivoService");
@@ -12,6 +13,20 @@ const _getArquivoService = () => require("./ArquivoService");
 const FINAL_STATUSES = ["aprovada", "rejeitada", "concluida"];
 
 class SyncService {
+  _serializeFields(data, fields = []) {
+    const payload = { ...data };
+
+    for (const field of fields) {
+      if (payload[field] !== undefined && payload[field] !== null) {
+        if (typeof payload[field] === "object") {
+          payload[field] = JSON.stringify(payload[field]);
+        }
+      }
+    }
+
+    return payload;
+  }
+
   _parseMetadata(metadata) {
     if (!metadata) return {};
     if (typeof metadata === "object") return metadata;
@@ -102,6 +117,10 @@ class SyncService {
    * Processa sincronização em lote (push do cliente)
    */
   async pushBatch(batchData, userId) {
+    const userRepository = require("../repositories/UserRepository");
+    const user = await userRepository.findById(userId);
+    const userPerfil = user?.perfil || "encarregado";
+
     const results = {
       success: [],
       conflicts: [],
@@ -112,7 +131,7 @@ class SyncService {
     if (batchData.medicoes && batchData.medicoes.length > 0) {
       for (const medicao of batchData.medicoes) {
         try {
-          const result = await this.syncMedicao(medicao, userId);
+          const result = await this.syncMedicao(medicao, userId, userPerfil);
           results.success.push({
             type: "medicao",
             id: result.id || result._id || null,
@@ -213,7 +232,6 @@ class SyncService {
     }
 
     // Atualizar lastSync do usuário
-    const userRepository = require("../repositories/UserRepository");
     await userRepository.updateLastSync(userId);
 
     return results;
@@ -222,9 +240,9 @@ class SyncService {
   /**
    * Sincroniza uma medição (Last-Write-Wins com proteção de status finais)
    */
-  async syncMedicao(medicaoData, userId) {
+  async syncMedicao(medicaoData, userId, userPerfil = "encarregado") {
     if (!medicaoData.syncId) {
-      throw new Error("syncId é obrigatório para sincronização");
+      throw new ValidationError("syncId é obrigatório para sincronização");
     }
 
     // Buscar medição existente pelo syncId
@@ -242,13 +260,20 @@ class SyncService {
 
       // Resolver conflito usando Last-Write-Wins
       if (this._isClientNewer(medicaoData.clientTimestamp, existing)) {
+        const normalizedPayload = this._serializeFields(medicaoData, [
+          "periodo",
+          "itens",
+          "anexos",
+          "metadata",
+        ]);
+
         // Cliente mais recente, atualizar
         logger.info(
           `Resolvendo conflito de medição ${medicaoData.syncId} - Cliente vence`,
         );
         const existingId = existing.id || existing._id;
         const updated = await medicaoRepository.update(existingId, {
-          ...medicaoData,
+          ...normalizedPayload,
           sincronizado: true,
         });
         return updated;
@@ -269,7 +294,7 @@ class SyncService {
         sincronizado: true,
       },
       userId,
-      "encarregado",
+      userPerfil,
     );
   }
 
@@ -278,7 +303,7 @@ class SyncService {
    */
   async syncDiario(diarioData, userId) {
     if (!diarioData.syncId) {
-      throw new Error("syncId é obrigatório para sincronização");
+      throw new ValidationError("syncId é obrigatório para sincronização");
     }
 
     const existing = await diarioRepository.findBySyncId(diarioData.syncId);
@@ -293,12 +318,23 @@ class SyncService {
       }
 
       if (this._isClientNewer(diarioData.clientTimestamp, existing)) {
+        const normalizedPayload = this._serializeFields(diarioData, [
+          "equipamentos",
+          "maoDeObra",
+          "atividades",
+          "materiais",
+          "ocorrencias",
+          "visitantes",
+          "fotos",
+          "metadata",
+        ]);
+
         logger.info(
           `Resolvendo conflito de diário ${diarioData.syncId} - Cliente vence`,
         );
         const existingId = existing.id || existing._id;
         return await diarioRepository.update(existingId, {
-          ...diarioData,
+          ...normalizedPayload,
           sincronizado: true,
         });
       } else {
@@ -309,8 +345,19 @@ class SyncService {
       }
     }
 
+    const normalizedPayload = this._serializeFields(diarioData, [
+      "equipamentos",
+      "maoDeObra",
+      "atividades",
+      "materiais",
+      "ocorrencias",
+      "visitantes",
+      "fotos",
+      "metadata",
+    ]);
+
     return await diarioRepository.create({
-      ...diarioData,
+      ...normalizedPayload,
       responsavel: userId,
       sincronizado: true,
       metadata: { createdBy: userId },
@@ -322,7 +369,7 @@ class SyncService {
    */
   async syncSolicitacao(solicitacaoData, userId) {
     if (!solicitacaoData.syncId) {
-      throw new Error("syncId é obrigatório para sincronização");
+      throw new ValidationError("syncId é obrigatório para sincronização");
     }
 
     const existing = await solicitacaoCompraRepository.findBySyncId(
@@ -331,12 +378,18 @@ class SyncService {
 
     if (existing) {
       if (this._isClientNewer(solicitacaoData.clientTimestamp, existing)) {
+        const normalizedPayload = this._serializeFields(solicitacaoData, [
+          "itens",
+          "anexos",
+          "metadata",
+        ]);
+
         logger.info(
           `Resolvendo conflito de solicitação ${solicitacaoData.syncId} - Cliente vence`,
         );
         const existingId = existing.id || existing._id;
         return await solicitacaoCompraRepository.update(existingId, {
-          ...solicitacaoData,
+          ...normalizedPayload,
           sincronizado: true,
         });
       } else {
@@ -347,8 +400,14 @@ class SyncService {
       }
     }
 
+    const normalizedPayload = this._serializeFields(solicitacaoData, [
+      "itens",
+      "anexos",
+      "metadata",
+    ]);
+
     return await solicitacaoCompraRepository.create({
-      ...solicitacaoData,
+      ...normalizedPayload,
       solicitante: userId,
       sincronizado: true,
       metadata: { createdBy: userId },
@@ -362,7 +421,7 @@ class SyncService {
    */
   async syncArquivo(arquivoData, userId) {
     if (!arquivoData.syncId) {
-      throw new Error("syncId é obrigatório para sincronização");
+      throw new ValidationError("syncId é obrigatório para sincronização");
     }
 
     // Idempotência: se já existe no banco, retorna sem reprocessar
@@ -373,7 +432,7 @@ class SyncService {
     }
 
     if (!arquivoData.base64) {
-      throw new Error("Campo 'base64' é obrigatório para sync de arquivos");
+      throw new ValidationError("Campo 'base64' é obrigatório para sync de arquivos");
     }
 
     // Converte base64 para Buffer (mantém compatibilidade com ArquivoService)
@@ -395,6 +454,7 @@ class SyncService {
       tags:             arquivoData.tags             || null,
       solicitadoPor:    arquivoData.solicitadoPor    || null,
       detalheProblema:  arquivoData.detalheProblema  || null,
+      syncId:           arquivoData.syncId,
     };
 
     // processUpload já gerencia compressão, magic bytes e persistência

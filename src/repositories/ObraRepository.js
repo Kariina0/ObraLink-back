@@ -1,4 +1,5 @@
 const BaseRepository = require("./BaseRepository");
+const { ValidationError } = require("../utils/errors");
 
 class ObraRepository extends BaseRepository {
   constructor() {
@@ -129,7 +130,7 @@ class ObraRepository extends BaseRepository {
     const numObraId = Number(obraId);
     const numUserId = Number(userId);
     if (!numObraId || !numUserId) {
-      throw new Error("obraId e userId devem ser números válidos");
+      throw new ValidationError("obraId e userId devem ser números válidos");
     }
     const { error } = await this.supabase
       .from("obra_encarregados")

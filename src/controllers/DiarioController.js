@@ -2,6 +2,7 @@ const diarioService = require("../services/DiarioService");
 const DiarioDTO     = require("../dtos/DiarioDTO");
 const { successResponse, paginate } = require("../utils/helpers");
 const { asyncHandler } = require("../middleware/errorHandler");
+const { ValidationError } = require("../utils/errors");
 
 class DiarioController {
   /**
@@ -128,7 +129,7 @@ class DiarioController {
   check = asyncHandler(async (req, res) => {
     const { obra, data } = req.query;
     if (!obra || !data) {
-      return res.status(400).json({ success: false, message: "Parâmetros 'obra' e 'data' são obrigatórios" });
+      throw new ValidationError("Parâmetros 'obra' e 'data' são obrigatórios");
     }
     const result = await diarioService.checkDuplicata(Number(obra), data);
     res.json(successResponse(result, "Verificação concluída"));

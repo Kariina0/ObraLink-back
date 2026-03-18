@@ -359,9 +359,12 @@ router.get(
     const ALLOWED_STATUSES = ["enviada", "aprovada", "rejeitada", "rascunho"];
 
     const buildMedicoesQuery = (withDeletedAt) => {
+      // Não depender de relacionamentos embutidos do PostgREST/Supabase
+      // (evita erro quando FK/relationships não estão presentes no schema cache).
+      // Buscar apenas colunas diretas e resolver nomes em consultas separadas.
       let query = supabase
         .from("medicoes")
-        .select("id, obra, responsavel, data, area, tipoServico, status, areaCalculada, volume, observacoes, itens, obras(nome), users:responsavel(nome)")
+        .select("id, obra, responsavel, data, area, tipoServico, status, areaCalculada, volume, observacoes, itens")
         .order("data", { ascending: false });
 
       if (withDeletedAt) {
@@ -399,6 +402,33 @@ router.get(
     const { data: medicoes, error: medErr } = await runWithDeletedAtFallback(buildMedicoesQuery);
     if (medErr) throw medErr;
 
+    // Buscar nomes de obras e usuários referenciados — evita dependência de
+    // relationships no cache do PostgREST (mensagem de erro: "Could not find a relationship...").
+    const obraIds = Array.from(new Set((medicoes ?? []).map((m) => m.obra).filter(Boolean)));
+    const userIds = Array.from(new Set((medicoes ?? []).map((m) => m.responsavel).filter(Boolean)));
+
+    let obrasMap = {};
+    if (obraIds.length > 0) {
+      const { data: obrasData, error: obrasErr } = await runWithDeletedAtFallback((withDeletedAt) => {
+        let q = supabase.from("obras").select("id, nome");
+        if (withDeletedAt) q = q.is("deletedAt", null);
+        return q.in("id", obraIds);
+      });
+      if (obrasErr) throw obrasErr;
+      obrasMap = (obrasData || []).reduce((acc, o) => ({ ...acc, [o.id]: o.nome }), {});
+    }
+
+    let usersMap = {};
+    if (userIds.length > 0) {
+      const { data: usersData, error: usersErr } = await runWithDeletedAtFallback((withDeletedAt) => {
+        let q = supabase.from("users").select("id, nome");
+        if (withDeletedAt) q = q.is("deletedAt", null);
+        return q.in("id", userIds);
+      });
+      if (usersErr) throw usersErr;
+      usersMap = (usersData || []).reduce((acc, u) => ({ ...acc, [u.id]: u.nome }), {});
+    }
+
     const rows = (medicoes ?? []).map((m) => {
       let valorTotal;
       try {
@@ -410,8 +440,8 @@ router.get(
 
       return {
         "ID":               m.id,
-        "Obra":             m.obras?.nome || "",
-        "Responsável":      m.users?.nome || "",
+        "Obra":             obrasMap[m.obra] || "",
+        "Responsável":      usersMap[m.responsavel] || "",
         "Data":             m.data ? new Date(m.data).toLocaleDateString("pt-BR") : "",
         "Área/Ambiente":    m.area || "",
         "Tipo de Serviço":  m.tipoServico || "",

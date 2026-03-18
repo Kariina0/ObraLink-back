@@ -7,6 +7,7 @@ const {
   createMedicaoSchema,
   updateMedicaoSchema,
 } = require("../validators/medicaoValidator");
+const { ValidationError } = require("../utils/errors");
 const { PERFIS } = require("../constants");
 
 // Todas as rotas requerem autenticação
@@ -19,7 +20,7 @@ router.use(authenticate);
 const validateIntId = (req, res, next) => {
   const id = parseInt(req.params.id, 10);
   if (!Number.isInteger(id) || id <= 0) {
-    return res.status(400).json({ success: false, message: "ID inválido" });
+    return next(new ValidationError("ID inválido"));
   }
   req.params.id = id;
   next();
@@ -96,6 +97,11 @@ router.post(
  * @desc Excluir medição (soft delete)
  * @access Dono da medição ou Admin
  */
-router.delete("/:id", validateIntId, authorize(PERFIS.ENCARREGADO, PERFIS.SUPERVISOR, PERFIS.ADMIN), medicaoController.delete);
+router.delete(
+  "/:id",
+  validateIntId,
+  authorize(PERFIS.ENCARREGADO, PERFIS.ADMIN),
+  medicaoController.delete,
+);
 
 module.exports = router;

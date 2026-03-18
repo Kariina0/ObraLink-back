@@ -1,0 +1,49 @@
+HTTP/1.1 200 OK
+Vary: Origin, Accept-Encoding
+Access-Control-Allow-Credentials: true
+Content-Security-Policy: default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: same-origin
+Origin-Agent-Cluster: ?1
+Referrer-Policy: no-referrer
+Strict-Transport-Security: max-age=15552000; includeSubDomains
+X-Content-Type-Options: nosniff
+X-DNS-Prefetch-Control: off
+X-Download-Options: noopen
+X-Frame-Options: SAMEORIGIN
+X-Permitted-Cross-Domain-Policies: none
+X-XSS-Protection: 0
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 98
+Date: Wed, 18 Mar 2026 19:56:16 GMT
+X-RateLimit-Reset: 1773864573
+Content-Type: text/csv; charset=utf-8
+Content-Disposition: attachment; filename="boletim-medicoes-geral.csv"
+Content-Length: 2776
+ETag: W/"ad8-V39lf6hnwzgkxVWt7tfgaJMbjX8"
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+﻿ID,Obra,Responsável,Data,Área/Ambiente,Tipo de Serviço,Status,Área calc. (m²),Volume (m³),Valor Total (R$),Observações
+17,Escola Municipal Centro,Administrador,18/03/2026,fachada,revestimento,enviada,20.00,,20.00,naananana
+16,Escola Municipal Centro,Administrador,18/03/2026,telhado,demolicao,enviada,36.00,72.00,72.00,aaaa
+15,Galpão Industrial TechPark,Administrador,17/03/2026,banheiro,pintura,enviada,49.00,343.00,343.00,teste avaliando medicao
+14,Residencial Jardim das Flores,Administrador,17/03/2026,telhado,demolicao,enviada,9.00,26.91,26.91,"testeeee
+aaaaaaa
+eeeeeee
+bbdffbdb"
+13,Galpão Industrial TechPark,Administrador,17/03/2026,sala,pintura,enviada,4.00,8.00,8.00,
+12,Galpão Industrial TechPark,Administrador,17/03/2026,banheiro,estrutura,enviada,1.00,1.00,1.00,teste
+11,Escola Municipal Centro,Administrador,17/03/2026,telhado,acabamento,aprovada,276.00,828.00,828.00,dd
+10,Escola Municipal Centro,Administrador,17/03/2026,telhado,demolicao,rascunho,11.00,11.00,11.00,a
+9,Escola Municipal Centro,Administrador,17/03/2026,fachada,cobertura,enviada,736.00,23552.00,23552.00,teste
+7,Galpão Industrial TechPark,Pedro Silva,11/03/2026,Cobertura,Telha metálica,enviada,1500.00,,72700.00,Instalação de telhas com toda documentação de rastreabilidade.
+21,Galpão Industrial TechPark,Pedro Silva,11/03/2026,Cobertura,Telha metálica,enviada,1500.00,,72700.00,Instalação de telhas com toda documentação de rastreabilidade.
+19,Residencial Jardim das Flores,João Encarregado,07/03/2026,Estrutura,Alvenaria,aprovada,300.00,,7050.00,Levantamento das paredes do 1º pavimento.
+5,Residencial Jardim das Flores,João Encarregado,07/03/2026,Estrutura,Alvenaria,rejeitada,300.00,,7050.00,Levantamento das paredes do 1º pavimento.
+6,Galpão Industrial TechPark,Pedro Silva,04/03/2026,Cobertura,Montagem metálica,aprovada,1500.00,,109200.00,Montagem da estrutura metálica da cobertura do galpão.
+20,Galpão Industrial TechPark,Pedro Silva,04/03/2026,Cobertura,Montagem metálica,rejeitada,1500.00,,109200.00,Montagem da estrutura metálica da cobertura do galpão.
+18,Residencial Jardim das Flores,João Encarregado,28/02/2026,Fundação,Concretagem,aprovada,300.00,90.00,54900.00,Concretagem da laje de fundação realizada sem intercorrências.
+4,Residencial Jardim das Flores,João Encarregado,28/02/2026,Fundação,Concretagem,aprovada,300.00,90.00,54900.00,Concretagem da laje de fundação realizada sem intercorrências.
+8,Residencial Jardim das Flores,João Encarregado,14/02/2026,Infraestrutura,Escavação,aprovada,450.00,,13500.00,Escavação para fundação concluída.
+22,Residencial Jardim das Flores,João Encarregado,14/02/2026,Infraestrutura,Escavação,aprovada,450.00,,13500.00,Escavação para fundação concluída.
