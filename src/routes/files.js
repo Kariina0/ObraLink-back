@@ -96,6 +96,8 @@ router.get("/raw/:tipo/:filename", async (req, res, next) => {
       ".jpg": "image/jpeg",
       ".jpeg": "image/jpeg",
       ".png": "image/png",
+      ".heic": "image/heic",
+      ".heif": "image/heif",
       ".pdf": "application/pdf",
     };
     const ext = path.extname(filename).toLowerCase();

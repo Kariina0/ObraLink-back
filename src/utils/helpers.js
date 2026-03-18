@@ -113,7 +113,12 @@ const buildQueryFilters = (queryParams) => {
   const filters = {};
 
   // Remove campos de paginação
-  const { page: _page, limit: _limit, sort: _sort, ...filterParams } = queryParams;
+  const {
+    page: _page,
+    limit: _limit,
+    sort: _sort,
+    ...filterParams
+  } = queryParams;
 
   Object.keys(filterParams).forEach((key) => {
     if (filterParams[key]) {
@@ -151,6 +156,48 @@ const retryWithBackoff = async (fn, maxAttempts = 3, initialDelay = 1000) => {
   throw lastError;
 };
 
+/**
+ * Retorna a URL base pública da API para a requisição atual.
+ */
+const getRequestBaseUrl = (req) => {
+  if (!req) return "";
+
+  const forwardedProto = req.get?.("x-forwarded-proto");
+  const forwardedHost = req.get?.("x-forwarded-host");
+  const protocol = forwardedProto
+    ? forwardedProto.split(",")[0].trim()
+    : req.protocol;
+  const host = forwardedHost || req.get?.("host");
+
+  if (!protocol || !host) return "";
+  return `${protocol}://${host}`;
+};
+
+/**
+ * Converte uma URL relativa da API em URL absoluta.
+ */
+const toAbsoluteUrl = (req, resourceUrl) => {
+  if (!resourceUrl || typeof resourceUrl !== "string") return resourceUrl;
+  if (/^(?:https?:)?\/\//i.test(resourceUrl) || /^data:/i.test(resourceUrl)) {
+    return resourceUrl;
+  }
+  if (!resourceUrl.startsWith("/")) return resourceUrl;
+
+  const configuredBase =
+    process.env.PUBLIC_API_URL?.trim() ||
+    process.env.API_URL?.trim() ||
+    process.env.APP_URL?.trim() ||
+    getRequestBaseUrl(req);
+
+  if (!configuredBase) return resourceUrl;
+
+  const normalizedBase = configuredBase.endsWith("/")
+    ? configuredBase
+    : `${configuredBase}/`;
+
+  return new URL(resourceUrl, normalizedBase).toString();
+};
+
 module.exports = {
   successResponse,
   errorResponse,
@@ -163,4 +210,6 @@ module.exports = {
   buildQueryFilters,
   sleep,
   retryWithBackoff,
+  getRequestBaseUrl,
+  toAbsoluteUrl,
 };

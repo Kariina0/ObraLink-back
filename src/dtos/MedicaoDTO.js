@@ -11,16 +11,21 @@ class MedicaoDTO {
     this.area = medicao.area || null;
     this.tipoServico = medicao.tipoServico || null;
     // Dimensões brutas (adicionadas na migration 20260304_add_dimensoes_medicao)
-    this.comprimento   = MedicaoDTO._toNumber(medicao.comprimento);
-    this.largura       = MedicaoDTO._toNumber(medicao.largura);
-    this.altura        = MedicaoDTO._toNumber(medicao.altura);
+    this.comprimento = MedicaoDTO._toNumber(medicao.comprimento);
+    this.largura = MedicaoDTO._toNumber(medicao.largura);
+    this.altura = MedicaoDTO._toNumber(medicao.altura);
     this.areaCalculada = MedicaoDTO._toNumber(medicao.areaCalculada);
-    this.volume        = MedicaoDTO._toNumber(medicao.volume);
+    this.volume = MedicaoDTO._toNumber(medicao.volume);
 
     // PostgreSQL armazena JSON como TEXT — parsear se necessário
     this.periodo = MedicaoDTO._parseJson(medicao.periodo);
-    this.itens    = MedicaoDTO._parseJson(medicao.itens, []);
-    this.anexos   = MedicaoDTO._parseJson(medicao.anexos, []);
+    this.itens = MedicaoDTO._parseJson(medicao.itens, []);
+    this.anexosIds = MedicaoDTO._parseJson(medicao.anexos, []);
+    this.anexos = Array.isArray(medicao.anexosDetalhes)
+      ? medicao.anexosDetalhes
+      : this.anexosIds;
+    this.fotoUrl = medicao.fotoUrl || this.anexos[0]?.url || null;
+    this.temFoto = Boolean(this.fotoUrl);
 
     this.observacoes = medicao.observacoes;
     this.status = medicao.status;
@@ -38,7 +43,10 @@ class MedicaoDTO {
 
     // Calcular total somente quando itens é um array
     this.valorTotal = Array.isArray(this.itens)
-      ? this.itens.reduce((total, item) => total + (Number(item.valorTotal) || 0), 0)
+      ? this.itens.reduce(
+          (total, item) => total + (Number(item.valorTotal) || 0),
+          0,
+        )
       : 0;
   }
 

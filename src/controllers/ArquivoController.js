@@ -1,9 +1,21 @@
 const arquivoService = require("../services/ArquivoService");
 const ArquivoDTO = require("../dtos/ArquivoDTO");
-const { successResponse, paginate } = require("../utils/helpers");
+const {
+  successResponse,
+  paginate,
+  toAbsoluteUrl,
+} = require("../utils/helpers");
 const { asyncHandler } = require("../middleware/errorHandler");
 
 class ArquivoController {
+  _toArquivoDTO(req, arquivo) {
+    return new ArquivoDTO({
+      ...arquivo,
+      url: toAbsoluteUrl(req, arquivo?.url),
+      storage_url: toAbsoluteUrl(req, arquivo?.storage_url),
+    });
+  }
+
   /**
    * @route POST /api/files/upload
    * @desc Upload de arquivo único
@@ -24,7 +36,10 @@ class ArquivoController {
     res
       .status(201)
       .json(
-        successResponse(new ArquivoDTO(arquivo), "Arquivo enviado com sucesso"),
+        successResponse(
+          this._toArquivoDTO(req, arquivo),
+          "Arquivo enviado com sucesso",
+        ),
       );
   });
 
@@ -47,7 +62,7 @@ class ArquivoController {
 
     const successful = results
       .filter((r) => r.success)
-      .map((r) => new ArquivoDTO(r.arquivo));
+      .map((r) => this._toArquivoDTO(req, r.arquivo));
     const failed = results.filter((r) => !r.success);
 
     res.status(201).json(
@@ -73,7 +88,9 @@ class ArquivoController {
       req.user.perfil,
     );
 
-    res.json(successResponse(new ArquivoDTO(arquivo), "Arquivo encontrado"));
+    res.json(
+      successResponse(this._toArquivoDTO(req, arquivo), "Arquivo encontrado"),
+    );
   });
 
   /**
@@ -82,9 +99,9 @@ class ArquivoController {
    * @access Private
    */
   getByObra = asyncHandler(async (req, res) => {
-    const rawPage  = parseInt(req.query.page, 10);
+    const rawPage = parseInt(req.query.page, 10);
     const rawLimit = parseInt(req.query.limit, 10);
-    const page  = rawPage  > 0 ? rawPage  : 1;
+    const page = rawPage > 0 ? rawPage : 1;
     const limit = rawLimit > 0 && rawLimit <= 100 ? rawLimit : 20;
     const result = await arquivoService.getByObra(
       req.params.obraId,
@@ -100,7 +117,7 @@ class ArquivoController {
 
     res.json(
       successResponse(
-        result.data.map((a) => new ArquivoDTO(a)),
+        result.data.map((a) => this._toArquivoDTO(req, a)),
         "Arquivos listados",
         pagination,
       ),
@@ -113,9 +130,9 @@ class ArquivoController {
    * @access Private
    */
   getByTipo = asyncHandler(async (req, res) => {
-    const rawPage  = parseInt(req.query.page, 10);
+    const rawPage = parseInt(req.query.page, 10);
     const rawLimit = parseInt(req.query.limit, 10);
-    const page  = rawPage  > 0 ? rawPage  : 1;
+    const page = rawPage > 0 ? rawPage : 1;
     const limit = rawLimit > 0 && rawLimit <= 100 ? rawLimit : 20;
     const result = await arquivoService.getByTipo(
       req.params.tipo,
@@ -131,7 +148,7 @@ class ArquivoController {
 
     res.json(
       successResponse(
-        result.data.map((a) => new ArquivoDTO(a)),
+        result.data.map((a) => this._toArquivoDTO(req, a)),
         "Arquivos listados",
         pagination,
       ),

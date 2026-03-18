@@ -1,5 +1,7 @@
 const medicaoRepository = require("../repositories/MedicaoRepository");
 const obraRepository = require("../repositories/ObraRepository");
+const arquivoRepository = require("../repositories/ArquivoRepository");
+const storageService = require("./StorageService");
 const {
   NotFoundError,
   ForbiddenError,
@@ -9,6 +11,86 @@ const { generateSyncId } = require("../utils/helpers");
 const { PERFIS } = require("../constants");
 
 class MedicaoService {
+  _extractAnexoIds(anexos) {
+    let parsed = anexos;
+    if (typeof parsed === "string") {
+      try {
+        parsed = JSON.parse(parsed);
+      } catch {
+        parsed = [];
+      }
+    }
+
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value > 0);
+  }
+
+  async _hydrateAttachmentUrls(arquivos) {
+    await Promise.allSettled(
+      arquivos
+        .filter(
+          (arquivo) =>
+            arquivo.storage_provider === "supabase" && arquivo.storage_path,
+        )
+        .map(async (arquivo) => {
+          arquivo.storage_url = await storageService.getSignedUrl(
+            arquivo.storage_path,
+          );
+        }),
+    );
+  }
+
+  async _attachMeasurementFiles(medicoes) {
+    const items = Array.isArray(medicoes) ? medicoes : [medicoes];
+    if (items.length === 0) return medicoes;
+
+    const attachmentIds = [
+      ...new Set(
+        items.flatMap((medicao) => this._extractAnexoIds(medicao?.anexos)),
+      ),
+    ];
+    if (attachmentIds.length === 0) {
+      for (const medicao of items) {
+        medicao.anexosDetalhes = [];
+        medicao.fotoUrl = null;
+      }
+      return medicoes;
+    }
+
+    const arquivos = await arquivoRepository.findByIds(attachmentIds);
+    await this._hydrateAttachmentUrls(arquivos);
+
+    const arquivoById = new Map(
+      arquivos.map((arquivo) => [
+        Number(arquivo.id),
+        {
+          id: arquivo.id,
+          nome: arquivo.nome,
+          nomeOriginal: arquivo.nomeOriginal,
+          url: arquivo.storage_url || arquivo.url,
+          storage_url: arquivo.storage_url || null,
+          mimeType: arquivo.mimeType,
+          tipo: arquivo.tipo,
+          descricao: arquivo.descricao,
+          storageProvider: arquivo.storage_provider || "local",
+        },
+      ]),
+    );
+
+    for (const medicao of items) {
+      const anexosDetalhes = this._extractAnexoIds(medicao?.anexos)
+        .map((id) => arquivoById.get(id))
+        .filter(Boolean);
+
+      medicao.anexosDetalhes = anexosDetalhes;
+      medicao.fotoUrl = anexosDetalhes[0]?.url || null;
+    }
+
+    return medicoes;
+  }
+
   async create(medicaoData, userId, userPerfil) {
     // Verificar se obra existe
     const obra = await obraRepository.findById(medicaoData.obra);
@@ -35,11 +117,19 @@ class MedicaoService {
     }
 
     // Calcular areaCalculada e volume automaticamente a partir das dimensões
-    const comprimento = medicaoData.comprimento != null ? Number(medicaoData.comprimento) : null;
-    const largura     = medicaoData.largura     != null ? Number(medicaoData.largura)     : null;
-    const altura      = medicaoData.altura      != null ? Number(medicaoData.altura)      : null;
+    const comprimento =
+      medicaoData.comprimento != null ? Number(medicaoData.comprimento) : null;
+    const largura =
+      medicaoData.largura != null ? Number(medicaoData.largura) : null;
+    const altura =
+      medicaoData.altura != null ? Number(medicaoData.altura) : null;
 
-    if (comprimento != null && largura != null && !isNaN(comprimento) && !isNaN(largura)) {
+    if (
+      comprimento != null &&
+      largura != null &&
+      !isNaN(comprimento) &&
+      !isNaN(largura)
+    ) {
       medicaoData.areaCalculada = comprimento * largura;
       if (altura != null && !isNaN(altura)) {
         medicaoData.volume = comprimento * largura * altura;
@@ -66,11 +156,13 @@ class MedicaoService {
     // Criar medição
     const medicao = await medicaoRepository.create(medicaoData);
     const medicaoId = medicao.id || medicao._id || medicao;
-    return await medicaoRepository.findById(medicaoId, [
+    const created = await medicaoRepository.findById(medicaoId, [
       "obra",
       "responsavel",
       "anexos",
     ]);
+    await this._attachMeasurementFiles(created);
+    return created;
   }
 
   async update(medicaoId, medicaoData, userId, userPerfil) {
@@ -92,15 +184,24 @@ class MedicaoService {
     }
 
     // Recalcular areaCalculada e volume se dimensões foram atualizadas
-    const comprimento = medicaoData.comprimento != null ? Number(medicaoData.comprimento) : null;
-    const largura     = medicaoData.largura     != null ? Number(medicaoData.largura)     : null;
-    const altura      = medicaoData.altura      != null ? Number(medicaoData.altura)      : null;
+    const comprimento =
+      medicaoData.comprimento != null ? Number(medicaoData.comprimento) : null;
+    const largura =
+      medicaoData.largura != null ? Number(medicaoData.largura) : null;
+    const altura =
+      medicaoData.altura != null ? Number(medicaoData.altura) : null;
 
-    if (comprimento != null && largura != null && !isNaN(comprimento) && !isNaN(largura)) {
+    if (
+      comprimento != null &&
+      largura != null &&
+      !isNaN(comprimento) &&
+      !isNaN(largura)
+    ) {
       medicaoData.areaCalculada = comprimento * largura;
-      medicaoData.volume = (altura != null && !isNaN(altura))
-        ? comprimento * largura * altura
-        : null;
+      medicaoData.volume =
+        altura != null && !isNaN(altura)
+          ? comprimento * largura * altura
+          : null;
     }
 
     // Serializar arrays como JSON string (coluna TEXT no PostgreSQL)
@@ -117,11 +218,13 @@ class MedicaoService {
     // Atualizar
     const updated = await medicaoRepository.update(medicaoId, medicaoData);
     const updatedId = updated.id || updated._id || medicaoId;
-    return await medicaoRepository.findById(updatedId, [
+    const refreshed = await medicaoRepository.findById(updatedId, [
       "obra",
       "responsavel",
       "anexos",
     ]);
+    await this._attachMeasurementFiles(refreshed);
+    return refreshed;
   }
 
   async getById(medicaoId, userId, userPerfil) {
@@ -137,49 +240,76 @@ class MedicaoService {
       Number(medicao.responsavel) !== Number(userId)
     ) {
       throw new ForbiddenError(
-        "Você não tem permissão para acessar esta medição"
+        "Você não tem permissão para acessar esta medição",
       );
     }
 
+    await this._attachMeasurementFiles(medicao);
     return medicao;
   }
 
-  async getByObra(obraId, options, userId, userPerfil, obraAtual, filters = {}) {
+  async getByObra(
+    obraId,
+    options,
+    userId,
+    userPerfil,
+    obraAtual,
+    filters = {},
+  ) {
     if (userPerfil === PERFIS.ENCARREGADO) {
       // Verificar vínculo pelo N:N
-      const vinculado = await obraRepository.isEncarregadoVinculado(obraId, userId);
+      const vinculado = await obraRepository.isEncarregadoVinculado(
+        obraId,
+        userId,
+      );
       if (!vinculado) {
         throw new ForbiddenError(
-          "Você não tem permissão para acessar medições desta obra"
+          "Você não tem permissão para acessar medições desta obra",
         );
       }
 
-      return await medicaoRepository.findAllFiltered(
+      const result = await medicaoRepository.findAllFiltered(
         { obra: Number(obraId), responsavel: userId, ...filters },
-        options
+        options,
       );
+      await this._attachMeasurementFiles(result.data);
+      return result;
     }
 
-    return await medicaoRepository.findAllFiltered(
+    const result = await medicaoRepository.findAllFiltered(
       { obra: Number(obraId), ...filters },
-      options
+      options,
     );
+    await this._attachMeasurementFiles(result.data);
+    return result;
   }
 
   async getByResponsavel(userId, options, filters = {}) {
     // Se nenhum filtro extra foi informado, usa consulta simples (mais rápida)
-    const hasFilters = filters.obra || filters.status || filters.tipoServico
-      || filters.area || filters.dataInicio || filters.dataFim;
+    const hasFilters =
+      filters.obra ||
+      filters.status ||
+      filters.tipoServico ||
+      filters.area ||
+      filters.dataInicio ||
+      filters.dataFim;
 
     const scopedFilters = { ...filters, responsavel: userId };
-    const statusSummary = await medicaoRepository.getStatusSummaryFiltered(scopedFilters);
+    const statusSummary =
+      await medicaoRepository.getStatusSummaryFiltered(scopedFilters);
 
     if (hasFilters) {
-      const result = await medicaoRepository.findByResponsavelFiltered(userId, filters, options);
+      const result = await medicaoRepository.findByResponsavelFiltered(
+        userId,
+        filters,
+        options,
+      );
+      await this._attachMeasurementFiles(result.data);
       return { ...result, statusSummary };
     }
 
     const result = await medicaoRepository.findByResponsavel(userId, options);
+    await this._attachMeasurementFiles(result.data);
     return { ...result, statusSummary };
   }
 
@@ -187,13 +317,15 @@ class MedicaoService {
     // Apenas supervisores e admins podem ver todas as medições
     if (![PERFIS.SUPERVISOR, PERFIS.ADMIN].includes(userPerfil)) {
       throw new ForbiddenError(
-        "Apenas supervisores e administradores podem listar todas as medições"
+        "Apenas supervisores e administradores podem listar todas as medições",
       );
     }
     const [result, statusSummary] = await Promise.all([
       medicaoRepository.findAllFiltered(filters, options),
       medicaoRepository.getStatusSummaryFiltered(filters),
     ]);
+
+    await this._attachMeasurementFiles(result.data);
 
     return { ...result, statusSummary };
   }
@@ -212,7 +344,13 @@ class MedicaoService {
       throw new ValidationError("Medição já está aprovada");
     }
 
-    return await medicaoRepository.updateStatus(medicaoId, "aprovada", userId);
+    const updatedMedicao = await medicaoRepository.updateStatus(
+      medicaoId,
+      "aprovada",
+      userId,
+    );
+    await this._attachMeasurementFiles(updatedMedicao);
+    return updatedMedicao;
   }
 
   async rejeitar(medicaoId, userId, userPerfil, motivoRejeicao = null) {
@@ -228,10 +366,19 @@ class MedicaoService {
       throw new ValidationError("Medição já está rejeitada");
     }
     if (medicao.status === "aprovada") {
-      throw new ValidationError("Não é possível rejeitar uma medição já aprovada");
+      throw new ValidationError(
+        "Não é possível rejeitar uma medição já aprovada",
+      );
     }
 
-    return await medicaoRepository.updateStatus(medicaoId, "rejeitada", userId, motivoRejeicao);
+    const updatedMedicao = await medicaoRepository.updateStatus(
+      medicaoId,
+      "rejeitada",
+      userId,
+      motivoRejeicao,
+    );
+    await this._attachMeasurementFiles(updatedMedicao);
+    return updatedMedicao;
   }
 
   async delete(medicaoId, userId, userPerfil) {

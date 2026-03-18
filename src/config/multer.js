@@ -34,6 +34,10 @@ const fileFilter = (req, file, cb) => {
     "image/jpeg",
     "image/png",
     "image/jpg",
+    "image/heic",
+    "image/heif",
+    "image/heic-sequence",
+    "image/heif-sequence",
     "application/pdf",
   ];
   if (allowedTypes.includes(file.mimetype)) {

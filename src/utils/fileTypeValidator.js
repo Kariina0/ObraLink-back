@@ -6,7 +6,7 @@
  *
  * Isso impede que arquivos maliciosos sejam enviados com um MIME type forjado.
  *
- * Tipos suportados: JPEG, PNG, PDF
+ * Tipos suportados: JPEG, PNG, HEIC/HEIF, PDF
  */
 
 const fs = require("fs").promises;
@@ -15,6 +15,24 @@ const fs = require("fs").promises;
  * Tabela de assinaturas binárias por MIME type.
  * Cada tipo pode ter múltiplos padrões de assinatura (ex: JPEG tem variantes).
  */
+const heifCompatibleBrands = [
+  "heic",
+  "heix",
+  "hevc",
+  "hevx",
+  "heim",
+  "heis",
+  "hevm",
+  "hevs",
+  "mif1",
+  "msf1",
+];
+
+const isoBmffSignature = (brand) => ({
+  offset: 4,
+  bytes: [0x66, 0x74, 0x79, 0x70, ...Buffer.from(brand, "ascii")],
+});
+
 const SIGNATURES = {
   "image/jpeg": [
     [0xff, 0xd8, 0xff, 0xe0],
@@ -30,6 +48,10 @@ const SIGNATURES = {
     [0xff, 0xd8, 0xff, 0xdb],
   ],
   "image/png": [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
+  "image/heic": heifCompatibleBrands.map(isoBmffSignature),
+  "image/heif": heifCompatibleBrands.map(isoBmffSignature),
+  "image/heic-sequence": heifCompatibleBrands.map(isoBmffSignature),
+  "image/heif-sequence": heifCompatibleBrands.map(isoBmffSignature),
   "application/pdf": [[0x25, 0x50, 0x44, 0x46]], // %PDF
 };
 
@@ -48,8 +70,16 @@ const MAX_SIG_LEN = Math.max(
  * @returns {boolean}
  */
 function matchesSignature(buffer, signature) {
-  if (buffer.length < signature.length) return false;
-  return signature.every((byte, i) => buffer[i] === byte);
+  const normalized = Array.isArray(signature)
+    ? { offset: 0, bytes: signature }
+    : signature;
+
+  if (!normalized || !Array.isArray(normalized.bytes)) return false;
+
+  const { offset = 0, bytes } = normalized;
+  if (buffer.length < offset + bytes.length) return false;
+
+  return bytes.every((byte, i) => buffer[offset + i] === byte);
 }
 
 /**
@@ -99,4 +129,9 @@ function getSupportedMimeTypes() {
   return Object.keys(SIGNATURES);
 }
 
-module.exports = { validateBuffer, validateFile, getSupportedMimeTypes, MAX_SIG_LEN };
+module.exports = {
+  validateBuffer,
+  validateFile,
+  getSupportedMimeTypes,
+  MAX_SIG_LEN,
+};

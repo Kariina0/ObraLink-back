@@ -22,6 +22,33 @@ class ArquivoRepository extends BaseRepository {
     return this.findAll({ uploadedBy: userId }, options);
   }
 
+  async findByIds(ids = []) {
+    const uniqueIds = [
+      ...new Set((ids || []).map(Number).filter(Number.isInteger)),
+    ];
+    if (uniqueIds.length === 0) return [];
+
+    const { data, error } = await this._runWithDeletedAtFallback(
+      (withDeletedAt) => {
+        let query = this.supabase
+          .from(this.table)
+          .select("*")
+          .in("id", uniqueIds);
+        if (withDeletedAt) {
+          query = query.is("deletedAt", null);
+        }
+        return query;
+      },
+    );
+
+    if (error) throw error;
+
+    const byId = new Map(
+      (data ?? []).map((arquivo) => [Number(arquivo.id), arquivo]),
+    );
+    return uniqueIds.map((id) => byId.get(id)).filter(Boolean);
+  }
+
   async findPendentes(options = {}) {
     return this.findAll({ sincronizado: false }, options);
   }
@@ -78,8 +105,14 @@ class ArquivoRepository extends BaseRepository {
     if (error) throw error;
 
     const rows = data ?? [];
-    const totalSize = rows.reduce((acc, r) => acc + Number(r.total_bytes ?? 0), 0);
-    const totalFiles = rows.reduce((acc, r) => acc + Number(r.total_arquivos ?? 0), 0);
+    const totalSize = rows.reduce(
+      (acc, r) => acc + Number(r.total_bytes ?? 0),
+      0,
+    );
+    const totalFiles = rows.reduce(
+      (acc, r) => acc + Number(r.total_arquivos ?? 0),
+      0,
+    );
     return { totalSize, totalFiles };
   }
 }

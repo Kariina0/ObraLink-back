@@ -132,7 +132,7 @@
 - Campos obrigatórios: `obra`, `tipoArquivo`, `descricao`.
 - Quando `tipoArquivo = problema`, o campo `detalheProblema` é obrigatório.
 - Limite padrão por arquivo: `5 MB` (configurável via `MAX_FILE_SIZE`).
-- Tipos permitidos padrão: `image/jpeg`, `image/png`, `application/pdf`.
+- Tipos permitidos padrão: `image/jpeg`, `image/png`, `image/heic`, `image/heif`, `application/pdf`.
 
 ### RN-17 — Segurança no acesso a arquivos
 
@@ -142,7 +142,7 @@
 
 ### RN-18 — Compressão e armazenamento
 
-- Imagens JPEG/PNG podem ser comprimidas com `sharp` (qualidade configurável por `IMAGE_COMPRESSION_QUALITY`).
+- Imagens JPEG/PNG/HEIC/HEIF podem ser comprimidas com `sharp` quando suportadas pelo ambiente (qualidade configurável por `IMAGE_COMPRESSION_QUALITY`).
 - Storage configurável: `local` (disco) ou `supabase` (nuvem).
 - Em Supabase, URLs assinadas são renovadas automaticamente nas listagens.
 

@@ -31,7 +31,15 @@ const TIPOS_ARQUIVO = {
 /**
  * Tipos de upload de arquivo (campo tipoArquivo na tabela arquivos)
  */
-const TIPOS_ARQUIVO_UPLOAD = ["solicitacao", "problema", "relatorio", "medicao", "foto_obra", "documento", "outros"];
+const TIPOS_ARQUIVO_UPLOAD = [
+  "solicitacao",
+  "problema",
+  "relatorio",
+  "medicao",
+  "foto_obra",
+  "documento",
+  "outros",
+];
 
 /**
  * Status de obra
@@ -125,7 +133,15 @@ const PAGINATION = {
  */
 const UPLOAD = {
   MAX_FILE_SIZE: 5 * 1024 * 1024, // 5MB
-  ALLOWED_MIME_TYPES: ["image/jpeg", "image/png", "application/pdf"],
+  ALLOWED_MIME_TYPES: [
+    "image/jpeg",
+    "image/png",
+    "image/heic",
+    "image/heif",
+    "image/heic-sequence",
+    "image/heif-sequence",
+    "application/pdf",
+  ],
   IMAGE_QUALITY: 80,
 };
 

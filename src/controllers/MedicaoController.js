@@ -1,20 +1,49 @@
 const medicaoService = require("../services/MedicaoService");
 const MedicaoDTO = require("../dtos/MedicaoDTO");
-const { successResponse, paginate } = require("../utils/helpers");
+const {
+  successResponse,
+  paginate,
+  toAbsoluteUrl,
+} = require("../utils/helpers");
 const { asyncHandler } = require("../middleware/errorHandler");
 
 class MedicaoController {
+  _toMedicaoDTO(req, medicao) {
+    const anexosDetalhes = Array.isArray(medicao?.anexosDetalhes)
+      ? medicao.anexosDetalhes.map((anexo) => ({
+          ...anexo,
+          url: toAbsoluteUrl(req, anexo?.url || anexo?.storage_url),
+          storage_url: toAbsoluteUrl(req, anexo?.storage_url),
+        }))
+      : medicao?.anexosDetalhes;
+
+    return new MedicaoDTO({
+      ...medicao,
+      anexosDetalhes,
+      fotoUrl: toAbsoluteUrl(req, medicao?.fotoUrl),
+    });
+  }
+
   /**
    * @route POST /api/measurements
    * @desc Criar nova medição
    * @access Encarregado, Supervisor, Admin
    */
   create = asyncHandler(async (req, res) => {
-    const medicao = await medicaoService.create(req.body, req.user.id, req.user.perfil);
-
-    res.status(201).json(
-      successResponse(new MedicaoDTO(medicao), "Medição criada com sucesso")
+    const medicao = await medicaoService.create(
+      req.body,
+      req.user.id,
+      req.user.perfil,
     );
+
+    res
+      .status(201)
+      .json(
+        successResponse(
+          this._toMedicaoDTO(req, medicao),
+          "Medição criada com sucesso",
+        ),
+      );
   });
 
   /**
@@ -23,10 +52,28 @@ class MedicaoController {
    * @access Supervisor, Admin
    */
   getAll = asyncHandler(async (req, res) => {
-    const { page: rawPage, limit: rawLimit, obra, status, responsavel, dataInicio, dataFim, area, tipoServico } = req.query;
+    const {
+      page: rawPage,
+      limit: rawLimit,
+      obra,
+      status,
+      responsavel,
+      dataInicio,
+      dataFim,
+      area,
+      tipoServico,
+    } = req.query;
     const page = Math.max(1, parseInt(rawPage, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(rawLimit, 10) || 10));
-    const filters = { obra, status, responsavel, dataInicio, dataFim, area, tipoServico };
+    const filters = {
+      obra,
+      status,
+      responsavel,
+      dataInicio,
+      dataFim,
+      area,
+      tipoServico,
+    };
     const result = await medicaoService.getAll(
       { page, limit },
       req.user.perfil,
@@ -37,7 +84,7 @@ class MedicaoController {
 
     res.json(
       successResponse(
-        result.data.map((m) => new MedicaoDTO(m)),
+        result.data.map((m) => this._toMedicaoDTO(req, m)),
         "Medições listadas",
         {
           ...pagination,
@@ -48,7 +95,7 @@ class MedicaoController {
             rascunho: 0,
           },
         },
-      )
+      ),
     );
   });
 
@@ -61,10 +108,12 @@ class MedicaoController {
     const medicao = await medicaoService.getById(
       req.params.id,
       req.user.id,
-      req.user.perfil
+      req.user.perfil,
     );
 
-    res.json(successResponse(new MedicaoDTO(medicao), "Medição encontrada"));
+    res.json(
+      successResponse(this._toMedicaoDTO(req, medicao), "Medição encontrada"),
+    );
   });
 
   /**
@@ -73,7 +122,15 @@ class MedicaoController {
    * @access Private
    */
   getByObra = asyncHandler(async (req, res) => {
-    const { page: rawPage, limit: rawLimit, status, tipoServico, area, dataInicio, dataFim } = req.query;
+    const {
+      page: rawPage,
+      limit: rawLimit,
+      status,
+      tipoServico,
+      area,
+      dataInicio,
+      dataFim,
+    } = req.query;
     const page = Math.max(1, parseInt(rawPage, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(rawLimit, 10) || 10));
     const filters = { status, tipoServico, area, dataInicio, dataFim };
@@ -83,14 +140,14 @@ class MedicaoController {
       req.user.id,
       req.user.perfil,
       req.user.obraAtual,
-      filters
+      filters,
     );
 
     const { pagination } = paginate(page, limit, result.total);
 
     res.json(
       successResponse(
-        result.data.map((m) => new MedicaoDTO(m)),
+        result.data.map((m) => this._toMedicaoDTO(req, m)),
         "Medições listadas",
         {
           ...pagination,
@@ -100,8 +157,8 @@ class MedicaoController {
             rejeitada: 0,
             rascunho: 0,
           },
-        }
-      )
+        },
+      ),
     );
   });
 
@@ -121,7 +178,16 @@ class MedicaoController {
    *  - dataFim     (string)  data final ISO (<=)
    */
   getMinhas = asyncHandler(async (req, res) => {
-    const { page: rawPage, limit: rawLimit, obra, status, tipoServico, area, dataInicio, dataFim } = req.query;
+    const {
+      page: rawPage,
+      limit: rawLimit,
+      obra,
+      status,
+      tipoServico,
+      area,
+      dataInicio,
+      dataFim,
+    } = req.query;
     const page = Math.max(1, parseInt(rawPage, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(rawLimit, 10) || 10));
     const filters = { obra, status, tipoServico, area, dataInicio, dataFim };
@@ -135,10 +201,10 @@ class MedicaoController {
 
     res.json(
       successResponse(
-        result.data.map((m) => new MedicaoDTO(m)),
+        result.data.map((m) => this._toMedicaoDTO(req, m)),
         "Medições listadas",
-        pagination
-      )
+        pagination,
+      ),
     );
   });
 
@@ -152,10 +218,15 @@ class MedicaoController {
       req.params.id,
       req.body,
       req.user.id,
-      req.user.perfil
+      req.user.perfil,
     );
 
-    res.json(successResponse(new MedicaoDTO(medicao), "Medição atualizada com sucesso"));
+    res.json(
+      successResponse(
+        this._toMedicaoDTO(req, medicao),
+        "Medição atualizada com sucesso",
+      ),
+    );
   });
 
   /**
@@ -167,10 +238,15 @@ class MedicaoController {
     const medicao = await medicaoService.aprovar(
       req.params.id,
       req.user.id,
-      req.user.perfil
+      req.user.perfil,
     );
 
-    res.json(successResponse(new MedicaoDTO(medicao), "Medição aprovada com sucesso"));
+    res.json(
+      successResponse(
+        this._toMedicaoDTO(req, medicao),
+        "Medição aprovada com sucesso",
+      ),
+    );
   });
 
   /**
@@ -179,18 +255,21 @@ class MedicaoController {
    * @access Supervisor, Admin
    */
   rejeitar = asyncHandler(async (req, res) => {
-    const motivoRejeicao = typeof req.body?.motivoRejeicao === "string"
-      ? req.body.motivoRejeicao.trim() || null
-      : null;
+    const motivoRejeicao =
+      typeof req.body?.motivoRejeicao === "string"
+        ? req.body.motivoRejeicao.trim() || null
+        : null;
 
     const medicao = await medicaoService.rejeitar(
       req.params.id,
       req.user.id,
       req.user.perfil,
-      motivoRejeicao
+      motivoRejeicao,
     );
 
-    res.json(successResponse(new MedicaoDTO(medicao), "Medição rejeitada"));
+    res.json(
+      successResponse(this._toMedicaoDTO(req, medicao), "Medição rejeitada"),
+    );
   });
 
   /**
