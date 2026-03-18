@@ -55,11 +55,19 @@ const SIGNATURES = {
   "application/pdf": [[0x25, 0x50, 0x44, 0x46]], // %PDF
 };
 
+function getSignatureLength(signature) {
+  if (Array.isArray(signature)) return signature.length;
+  if (!signature || !Array.isArray(signature.bytes)) return 0;
+  return (signature.offset || 0) + signature.bytes.length;
+}
+
 /**
  * Número de bytes necessários para a assinatura mais longa.
  */
 const MAX_SIG_LEN = Math.max(
-  ...Object.values(SIGNATURES).flatMap((sigs) => sigs.map((s) => s.length)),
+  ...Object.values(SIGNATURES).flatMap((signatures) =>
+    signatures.map((signature) => getSignatureLength(signature)),
+  ),
 );
 
 /**
@@ -96,6 +104,23 @@ function validateBuffer(buffer, declaredMime) {
 }
 
 /**
+ * Detecta o MIME type real a partir do buffer usando as assinaturas conhecidas.
+ * Retorna null quando o conteúdo não corresponde a nenhum tipo suportado.
+ *
+ * @param {Buffer} buffer
+ * @returns {string|null}
+ */
+function detectMimeTypeFromBuffer(buffer) {
+  for (const [mimeType, signatures] of Object.entries(SIGNATURES)) {
+    if (signatures.some((signature) => matchesSignature(buffer, signature))) {
+      return mimeType;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Valida magic bytes de um arquivo salvo em disco (modo local / diskStorage).
  * Lê apenas os primeiros bytes necessários, sem carregar o arquivo inteiro.
  *
@@ -107,7 +132,9 @@ async function validateFile(filePath, declaredMime) {
   const sigs = SIGNATURES[declaredMime];
   if (!sigs) return false;
 
-  const maxLen = Math.max(...sigs.map((s) => s.length));
+  const maxLen = Math.max(
+    ...sigs.map((signature) => getSignatureLength(signature)),
+  );
   let fd;
   try {
     fd = await fs.open(filePath, "r");
@@ -116,6 +143,46 @@ async function validateFile(filePath, declaredMime) {
     return sigs.some((sig) => matchesSignature(buf, sig));
   } finally {
     if (fd) await fd.close().catch(() => {});
+  }
+}
+
+/**
+ * Detecta o MIME type real de um arquivo em disco lendo apenas o cabeçalho.
+ *
+ * @param {string} filePath
+ * @returns {Promise<string|null>}
+ */
+async function detectMimeTypeFromFile(filePath) {
+  let fd;
+  try {
+    fd = await fs.open(filePath, "r");
+    const buf = Buffer.alloc(MAX_SIG_LEN);
+    await fd.read(buf, 0, MAX_SIG_LEN, 0);
+    return detectMimeTypeFromBuffer(buf);
+  } finally {
+    if (fd) await fd.close().catch(() => {});
+  }
+}
+
+function mimeTypeToExtension(mimeType) {
+  switch (mimeType) {
+    case "image/jpeg":
+    case "image/jpg":
+      return ".jpg";
+    case "image/png":
+      return ".png";
+    case "image/heic":
+      return ".heic";
+    case "image/heif":
+      return ".heif";
+    case "image/heic-sequence":
+      return ".heic";
+    case "image/heif-sequence":
+      return ".heif";
+    case "application/pdf":
+      return ".pdf";
+    default:
+      return "";
   }
 }
 
@@ -132,6 +199,9 @@ function getSupportedMimeTypes() {
 module.exports = {
   validateBuffer,
   validateFile,
+  detectMimeTypeFromBuffer,
+  detectMimeTypeFromFile,
+  mimeTypeToExtension,
   getSupportedMimeTypes,
   MAX_SIG_LEN,
 };

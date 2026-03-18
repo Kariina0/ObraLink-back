@@ -9,6 +9,11 @@ const logger = require("../utils/logger");
 const { validateBuffer, validateFile } = require("../utils/fileTypeValidator");
 
 class ArquivoService {
+  _replaceExtension(filename, extension) {
+    const parsed = path.parse(filename || "arquivo");
+    return `${parsed.name}${extension}`;
+  }
+
   /**
    * Processa upload de um único arquivo.
    * Suporta dois modos transparentemente:
@@ -47,6 +52,8 @@ class ArquivoService {
       let tamanhoFinal = file.size;
       let comprimido = false;
       let dimensoes = null;
+      let uploadMimeType = file.mimetype;
+      let uploadFilename = file.originalname;
 
       // Compatibilidade: quando multer está em diskStorage, não existe file.buffer.
       // Nesse caso, lê o conteúdo do arquivo temporário para manter o fluxo Supabase.
@@ -54,7 +61,9 @@ class ArquivoService {
         buffer = await fs.readFile(file.path);
       }
       if (!buffer) {
-        throw new ValidationError("Arquivo inválido: conteúdo não disponível para upload");
+        throw new ValidationError(
+          "Arquivo inválido: conteúdo não disponível para upload",
+        );
       }
 
       // ── C-3: Validar magic bytes ─────────────────────────────────────────────
@@ -80,6 +89,8 @@ class ArquivoService {
             buffer = compressed;
             tamanhoFinal = compressed.length;
             comprimido = true;
+            uploadMimeType = "image/jpeg";
+            uploadFilename = this._replaceExtension(file.originalname, ".jpg");
           }
 
           dimensoes = { largura: imgMeta.width, altura: imgMeta.height };
@@ -90,9 +101,9 @@ class ArquivoService {
 
       const { storagePath, storageUrl, filename } = await storageService.upload(
         buffer,
-        file.originalname,
+        uploadFilename,
         tipoNormalizado,
-        file.mimetype,
+        uploadMimeType,
       );
 
       // Se o arquivo veio por diskStorage, remove o temporário após enviar ao storage.
@@ -107,7 +118,7 @@ class ArquivoService {
         url: storageUrl,
         tipo: tipoNormalizado,
         tipoArquivo: tipoArquivo || null,
-        mimeType: file.mimetype,
+        mimeType: uploadMimeType,
         tamanho: tamanhoFinal,
         tamanhoOriginal: file.size,
         dimensoes: dimensoes ? JSON.stringify(dimensoes) : null,
@@ -135,6 +146,7 @@ class ArquivoService {
     let processedPath = file.path;
     let comprimido = false;
     const tamanhoOriginal = file.size;
+    let storedMimeType = file.mimetype;
 
     // ── C-3: Validar magic bytes (modo local — lê bytes do disco) ─────────────
     // Fallback para validateBuffer quando file.path não está disponível
@@ -166,9 +178,10 @@ class ArquivoService {
 
     if (file.mimetype.startsWith("image/")) {
       try {
+        const parsedPath = path.parse(file.path);
         const compressedPath = path.join(
           path.dirname(file.path),
-          `compressed-${path.basename(file.path)}`,
+          `compressed-${parsedPath.name}.jpg`,
         );
 
         await sharp(file.path)
@@ -184,6 +197,7 @@ class ArquivoService {
           await fs.unlink(file.path);
           processedPath = compressedPath;
           comprimido = true;
+          storedMimeType = "image/jpeg";
         } else {
           await fs.unlink(compressedPath);
         }
@@ -195,7 +209,7 @@ class ArquivoService {
           url: `/api/files/raw/${tipoNormalizado}/${path.basename(processedPath)}`,
           tipo: tipoNormalizado,
           tipoArquivo: tipoArquivo || null,
-          mimeType: file.mimetype,
+          mimeType: storedMimeType,
           tamanho: comprimido ? stats.size : file.size,
           tamanhoOriginal,
           dimensoes: JSON.stringify({
@@ -233,7 +247,7 @@ class ArquivoService {
       url: `/api/files/raw/${tipoNormalizado}/${file.filename}`,
       tipo: tipoNormalizado,
       tipoArquivo: tipoArquivo || null,
-      mimeType: file.mimetype,
+      mimeType: storedMimeType,
       tamanho: file.size,
       tamanhoOriginal: file.size,
       coordenadas: coordenadas ? JSON.stringify(coordenadas) : null,
