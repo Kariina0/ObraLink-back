@@ -47,6 +47,24 @@ app.use(compression());
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: "Muitas requisições. Tente novamente em alguns minutos.",
+  },
+  skip: (req) => {
+    const path = req.path || "";
+    const hasBearerToken =
+      typeof req.headers.authorization === "string" &&
+      req.headers.authorization.startsWith("Bearer ");
+
+    // Endpoints de auth já têm rate limits específicos por rota.
+    if (path.startsWith("/api/auth")) return true;
+
+    // Evita bloquear uso normal da aplicação após login.
+    return hasBearerToken;
+  },
 });
 app.use(limiter);
 

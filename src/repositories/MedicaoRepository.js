@@ -14,6 +14,9 @@ class MedicaoRepository extends BaseRepository {
     }
     if (filters.status) {
       query = query.eq("status", filters.status);
+    } else if (filters.excludeDrafts) {
+      // Se não há filtro de status mas excludeDrafts é true, excluir rascunhos
+      query = query.neq("status", "rascunho");
     }
     if (filters.area) {
       query = query.eq("area", filters.area);
@@ -70,6 +73,28 @@ class MedicaoRepository extends BaseRepository {
   }
 
   /**
+   * Busca medições de um responsável EXCLUINDO RASCUNHOS (por padrão para listagem).
+   */
+  async findByResponsavelExcludingDrafts(userId, options = {}) {
+    const { page = 1, limit = 10 } = options;
+    const offset = (page - 1) * limit;
+
+    let query = this.supabase
+      .from(this.table)
+      .select("*", { count: "exact" })
+      .eq("responsavel", userId)
+      .neq("status", "rascunho")
+      .is("deletedAt", null);
+
+    query = query.order("created_at", { ascending: false }).range(offset, offset + limit - 1);
+
+    const { data: rawRows, error, count } = await query;
+    if (error) throw error;
+
+    return { data: rawRows ?? [], total: count ?? 0, page, limit };
+  }
+
+  /**
    * Busca medições de um responsável com filtros opcionais.
    */
   async findByResponsavelFiltered(userId, filters = {}, options = {}) {
@@ -87,16 +112,18 @@ class MedicaoRepository extends BaseRepository {
   async findAllFiltered(filters = {}, options = {}) {
     const { page = 1, limit = 10 } = options;
 
+    // Se excludeDrafts é true mas não há filtro de status específico, enviar à RPC
     const params = {
-      p_page:         page,
-      p_limit:        limit,
-      p_obra:         filters.obra         ? Number(filters.obra)        : null,
-      p_responsavel:  filters.responsavel  ? Number(filters.responsavel) : null,
-      p_status:       filters.status       ?? null,
-      p_area:         filters.area         ?? null,
-      p_tipo_servico: filters.tipoServico  ?? null,
-      p_data_inicio:  filters.dataInicio ? new Date(filters.dataInicio).toISOString() : null,
-      p_data_fim:     filters.dataFim    ? new Date(filters.dataFim).toISOString()    : null,
+      p_page:               page,
+      p_limit:              limit,
+      p_obra:               filters.obra         ? Number(filters.obra)        : null,
+      p_responsavel:        filters.responsavel  ? Number(filters.responsavel) : null,
+      p_status:             filters.status       ?? null,
+      p_area:               filters.area         ?? null,
+      p_tipo_servico:       filters.tipoServico  ?? null,
+      p_data_inicio:        filters.dataInicio ? new Date(filters.dataInicio).toISOString() : null,
+      p_data_fim:           filters.dataFim    ? new Date(filters.dataFim).toISOString()    : null,
+      p_exclude_drafts:     filters.excludeDrafts === true ? true : false,
     };
 
     const { data, error } = await this.supabase.rpc("get_medicoes_filtered", params);

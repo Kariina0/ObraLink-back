@@ -176,6 +176,16 @@ class MedicaoService {
   async update(medicaoId, medicaoData, userId, userPerfil) {
     const medicao = await medicaoRepository.findById(medicaoId);
 
+    // Rascunho: apenas o criador pode editar, independente do perfil
+    if (
+      medicao.status === "rascunho" &&
+      Number(medicao.responsavel) !== Number(userId)
+    ) {
+      throw new ForbiddenError(
+        "Você não tem permissão para editar este rascunho",
+      );
+    }
+
     // Verificar permissão
     if (
       Number(medicao.responsavel) !== Number(userId) &&
@@ -243,6 +253,16 @@ class MedicaoService {
       "aprovadoPor",
     ]);
 
+    // Rascunhos são privados: apenas o criador pode acessar, independente do perfil
+    if (
+      medicao.status === "rascunho" &&
+      Number(medicao.responsavel) !== Number(userId)
+    ) {
+      throw new ForbiddenError(
+        "Você não tem permissão para acessar este rascunho",
+      );
+    }
+
     if (
       userPerfil === PERFIS.ENCARREGADO &&
       Number(medicao.responsavel) !== Number(userId)
@@ -264,6 +284,13 @@ class MedicaoService {
     obraAtual,
     filters = {},
   ) {
+    // Rascunhos são privados ao criador — excluir de todas as listagens por obra
+    const baseFilters = { ...filters };
+    if (baseFilters.status === "rascunho") {
+      delete baseFilters.status;
+    }
+    baseFilters.excludeDrafts = true;
+
     if (userPerfil === PERFIS.ENCARREGADO) {
       // Verificar vínculo pelo N:N
       const vinculado = await obraRepository.isEncarregadoVinculado(
@@ -277,7 +304,7 @@ class MedicaoService {
       }
 
       const result = await medicaoRepository.findAllFiltered(
-        { obra: Number(obraId), responsavel: userId, ...filters },
+        { obra: Number(obraId), responsavel: userId, ...baseFilters },
         options,
       );
       await this._attachMeasurementFiles(result.data);
@@ -285,7 +312,7 @@ class MedicaoService {
     }
 
     const result = await medicaoRepository.findAllFiltered(
-      { obra: Number(obraId), ...filters },
+      { obra: Number(obraId), ...baseFilters },
       options,
     );
     await this._attachMeasurementFiles(result.data);
@@ -302,21 +329,31 @@ class MedicaoService {
       filters.dataInicio ||
       filters.dataFim;
 
+    // Modificação: Excluir rascunhos por padrão
+    // Se o usuário não especificar um filtro de status, excluir rascunhos automaticamente
     const scopedFilters = { ...filters, responsavel: userId };
+    if (!filters.status) {
+      // Excluir rascunhos por padrão (para /minhas retornar apenas medições enviadas, aprovadas ou rejeitadas)
+      scopedFilters.excludeDrafts = true;
+    }
+
     const statusSummary =
       await medicaoRepository.getStatusSummaryFiltered(scopedFilters);
 
     if (hasFilters) {
+      // Usar scopedFilters para garantir que excludeDrafts seja aplicado
+      // quando nenhum filtro de status específico foi informado
       const result = await medicaoRepository.findByResponsavelFiltered(
         userId,
-        filters,
+        scopedFilters,
         options,
       );
       await this._attachMeasurementFiles(result.data);
       return { ...result, statusSummary };
     }
 
-    const result = await medicaoRepository.findByResponsavel(userId, options);
+    // Busca simples também deve excluir rascunhos
+    const result = await medicaoRepository.findByResponsavelExcludingDrafts(userId, options);
     await this._attachMeasurementFiles(result.data);
     return { ...result, statusSummary };
   }
@@ -328,10 +365,22 @@ class MedicaoService {
         "Apenas supervisores e administradores podem listar todas as medições",
       );
     }
+
+    // Rascunhos são privados ao criador — supervisores/admins NUNCA visualizam
+    // rascunhos de outros usuários na listagem geral.
+    const scopedFilters = { ...filters };
+    if (scopedFilters.status === "rascunho") {
+      delete scopedFilters.status;
+    }
+    scopedFilters.excludeDrafts = true;
+
     const [result, statusSummary] = await Promise.all([
-      medicaoRepository.findAllFiltered(filters, options),
-      medicaoRepository.getStatusSummaryFiltered(filters),
+      medicaoRepository.findAllFiltered(scopedFilters, options),
+      medicaoRepository.getStatusSummaryFiltered(scopedFilters),
     ]);
+
+    // Rascunhos nunca são contabilizados no sumário da visão geral
+    statusSummary.rascunho = 0;
 
     await this._attachMeasurementFiles(result.data);
 

@@ -3,8 +3,9 @@ const { UnauthorizedError } = require("../utils/errors");
 const userRepository = require("../repositories/UserRepository");
 
 // Permite período de transição com JWTs legados (custom) ainda em circulação.
-// Quando AUTH_PROVIDER=supabase (padrão), verifica pelo Supabase Auth.
-// Quando AUTH_PROVIDER=legacy, usa verificação JWT customizada (transitório).
+// Quando AUTH_PROVIDER=supabase (padrão), tenta Supabase Auth e faz fallback
+// automático para JWT legado quando aplicável.
+// Quando AUTH_PROVIDER=legacy, usa somente verificação JWT customizada.
 const AUTH_PROVIDER = (process.env.AUTH_PROVIDER || "supabase").toLowerCase();
 
 /**
@@ -43,7 +44,9 @@ const authenticate = async (req, res, next) => {
     } = await userClient.auth.getUser();
 
     if (authError || !authUser) {
-      throw new UnauthorizedError("Token inválido ou expirado");
+      // Compatibilidade de transição: tokens gerados pelo AuthService (JWT legado)
+      // continuam válidos enquanto o frontend migra para Supabase Auth.
+      return _authenticateLegacy(req, res, next);
     }
 
     // Carrega perfil em public.users pelo auth_id (UUID do Supabase) ou email
@@ -60,7 +63,7 @@ const authenticate = async (req, res, next) => {
     }
 
     if (!profile || !profile.isActive) {
-      throw new UnauthorizedError("Usuário não encontrado ou inativo");
+      return _authenticateLegacy(req, res, next);
     }
 
     req.user = {
@@ -74,19 +77,12 @@ const authenticate = async (req, res, next) => {
     next();
   } catch (error) {
     if (error instanceof UnauthorizedError) {
-      return next(error);
+      // Mantém compatibilidade com JWT legado mesmo quando AUTH_PROVIDER=supabase.
+      return _authenticateLegacy(req, res, next);
     }
-    // Erros de rede/Supabase → 401 (não vaza detalhes internos)
-    const msg = error?.message ?? "";
-    if (
-      msg.includes("JWT") ||
-      msg.includes("token") ||
-      msg.includes("unauthorized") ||
-      msg.includes("invalid")
-    ) {
-      return next(new UnauthorizedError("Token inválido ou expirado"));
-    }
-    return next(error);
+
+    // Erros de rede/Supabase: tenta fallback legado antes de falhar.
+    return _authenticateLegacy(req, res, next);
   }
 };
 
@@ -150,7 +146,11 @@ const optionalAuth = async (req, res, next) => {
               perfil: profile.perfil,
               obraAtual: profile.obraAtual ?? null,
             };
+          } else {
+            await _optionalLegacy(req, token);
           }
+        } else {
+          await _optionalLegacy(req, token);
         }
       }
     }

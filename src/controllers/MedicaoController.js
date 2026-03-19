@@ -229,7 +229,61 @@ class MedicaoController {
       successResponse(
         result.data.map((m) => this._toMedicaoDTO(req, m)),
         "Medições listadas",
-        pagination,
+        {
+          ...pagination,
+          statusSummary: result.statusSummary || {
+            enviada: 0,
+            aprovada: 0,
+            rejeitada: 0,
+            rascunho: 0,
+          },
+        },
+      ),
+    );
+  });
+
+  /**
+   * @route GET /api/measurements/rascunhos
+   * @desc Listar RASCUNHOS do usuário atual
+   * @access Private
+   * @query
+   *  - page        (int)     número da página (padrão: 1)
+   *  - limit       (int)     itens por página (padrão: 10)
+   *  - obra        (int)     filtrar por obra
+   *  - tipoServico (string)  tipo de serviço realizado
+   *  - area        (string)  nome do ambiente (quarto, sala, etc.)
+   *  - dataInicio  (string)  data inicial ISO (>=)
+   *  - dataFim     (string)  data final ISO (<=)
+   */
+  getRascunhos = asyncHandler(async (req, res) => {
+    const {
+      page: rawPage,
+      limit: rawLimit,
+      obra,
+      tipoServico,
+      area,
+      dataInicio,
+      dataFim,
+    } = req.query;
+    const page = Math.max(1, parseInt(rawPage, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(rawLimit, 10) || 10));
+    const filters = { obra, status: "rascunho", tipoServico, area, dataInicio, dataFim };
+    const result = await medicaoService.getByResponsavel(
+      req.user.id,
+      { page, limit },
+      filters,
+    );
+
+    const { pagination } = paginate(page, limit, result.total);
+
+    res.json(
+      successResponse(
+        result.data.map((m) => this._toMedicaoDTO(req, m)),
+        "Rascunhos listados",
+        {
+          ...pagination,
+          statusSummary: { rascunho: result.total },
+        },
       ),
     );
   });

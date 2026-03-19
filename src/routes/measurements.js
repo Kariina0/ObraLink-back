@@ -48,6 +48,13 @@ router.post("/", validate(createMedicaoSchema), medicaoController.create);
 router.get("/minhas", medicaoController.getMinhas);
 
 /**
+ * @route GET /api/measurements/rascunhos
+ * @desc Listar RASCUNHOS do usuário atual
+ * @access Private
+ */
+router.get("/rascunhos", medicaoController.getRascunhos);
+
+/**
  * @route GET /api/measurements/obra/:obraId
  * @desc Listar medições de uma obra
  * @access Private

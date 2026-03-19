@@ -33,18 +33,26 @@ const createMedicaoSchema = Joi.object({
     inicio: Joi.date(),
     fim: Joi.date(),
   }),
-  area: Joi.string().trim().max(100).required().messages({
-    "string.empty": "Selecione a área (ambiente) da medição",
-    "any.required": "Área da medição é obrigatória",
-    "string.max": "Nome da área deve ter no máximo 100 caracteres",
-  }),
-  tipoServico: Joi.string()
-    .valid(...TIPOS_SERVICO)
-    .required()
-    .messages({
-      "any.only": `Tipo de serviço deve ser um dos seguintes: ${TIPOS_SERVICO.join(", ")}`,
-      "any.required": "Tipo de serviço é obrigatório",
+  area: Joi.when("status", {
+    is: "rascunho",
+    then: Joi.string().trim().max(100).allow("", null),
+    otherwise: Joi.string().trim().max(100).required().messages({
+      "string.empty": "Selecione a área (ambiente) da medição",
+      "any.required": "Área da medição é obrigatória",
+      "string.max": "Nome da área deve ter no máximo 100 caracteres",
     }),
+  }),
+  tipoServico: Joi.when("status", {
+    is: "rascunho",
+    then: Joi.string().valid(...TIPOS_SERVICO).allow("", null),
+    otherwise: Joi.string()
+      .valid(...TIPOS_SERVICO)
+      .required()
+      .messages({
+        "any.only": `Tipo de serviço deve ser um dos seguintes: ${TIPOS_SERVICO.join(", ")}`,
+        "any.required": "Tipo de serviço é obrigatório",
+      }),
+  }),
   // Dimensões brutas — preservadas individualmente para consultas futuras
   comprimento: Joi.number().min(0).allow(null).messages({
     "number.base": "Comprimento deve ser um número",
