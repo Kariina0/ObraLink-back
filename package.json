@@ -11,6 +11,7 @@
     "seed": "node scripts/seed.js",
     "seed:sqlite": "node scripts/seed_sqlite.js",
     "seed:postgres": "node scripts/seed_postgres.js",
+    "seed:supabase": "node scripts/seed_supabase_full.js",
     "migrate": "knex migrate:latest --knexfile knexfile.js",
     "migrate:rollback": "knex migrate:rollback --knexfile knexfile.js",
     "migrate:local-files-to-supabase": "node scripts/migrate_local_files_to_supabase.js",

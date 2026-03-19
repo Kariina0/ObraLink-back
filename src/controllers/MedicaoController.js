@@ -8,19 +8,45 @@ const {
 const { asyncHandler } = require("../middleware/errorHandler");
 
 class MedicaoController {
+  _normalizeAttachmentUrl(rawUrl, tipo = "outros") {
+    if (!rawUrl || typeof rawUrl !== "string") return rawUrl;
+
+    // URL absoluta ou data URI já pronta
+    if (/^(?:https?:)?\/\//i.test(rawUrl) || /^data:/i.test(rawUrl)) {
+      return rawUrl;
+    }
+
+    // Caminho relativo completo da API
+    if (rawUrl.startsWith("/")) return rawUrl;
+
+    // Compatibilidade com registros legados que guardaram só o filename
+    return `/api/files/raw/${tipo || "outros"}/${rawUrl}`;
+  }
+
   _toMedicaoDTO(req, medicao) {
     const anexosDetalhes = Array.isArray(medicao?.anexosDetalhes)
       ? medicao.anexosDetalhes.map((anexo) => ({
           ...anexo,
-          url: toAbsoluteUrl(req, anexo?.url || anexo?.storage_url),
+          url: toAbsoluteUrl(
+            req,
+            this._normalizeAttachmentUrl(
+              anexo?.url || anexo?.storage_url,
+              anexo?.tipo,
+            ),
+          ),
           storage_url: toAbsoluteUrl(req, anexo?.storage_url),
         }))
       : medicao?.anexosDetalhes;
 
+    const normalizedFotoUrl = this._normalizeAttachmentUrl(
+      medicao?.fotoUrl,
+      Array.isArray(anexosDetalhes) ? anexosDetalhes[0]?.tipo : "outros",
+    );
+
     return new MedicaoDTO({
       ...medicao,
       anexosDetalhes,
-      fotoUrl: toAbsoluteUrl(req, medicao?.fotoUrl),
+      fotoUrl: toAbsoluteUrl(req, normalizedFotoUrl),
     });
   }
 

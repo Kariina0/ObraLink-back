@@ -329,6 +329,8 @@ class ArquivoService {
       try {
         arquivo.storage_url = await storageService.getSignedUrl(
           arquivo.storage_path,
+          3600,
+          arquivo.storage_provider,
         );
       } catch (err) {
         logger.error("Erro ao gerar signed URL:", err);
@@ -346,14 +348,18 @@ class ArquivoService {
    * @param {object[]} arquivos - Array de registros retornados do banco
    */
   async _renewSignedUrls(arquivos) {
-    if (!storageService.isSupabase() || !Array.isArray(arquivos)) return;
+    if (!Array.isArray(arquivos)) return;
 
     await Promise.allSettled(
       arquivos
         .filter((a) => a.storage_provider === "supabase" && a.storage_path)
         .map(async (a) => {
           try {
-            a.storage_url = await storageService.getSignedUrl(a.storage_path);
+            a.storage_url = await storageService.getSignedUrl(
+              a.storage_path,
+              3600,
+              a.storage_provider,
+            );
           } catch (err) {
             logger.error(
               `[SIGNED_URL] Falha ao renovar URL do arquivo id=${a.id}: ${err.message}`,

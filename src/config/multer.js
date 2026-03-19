@@ -15,7 +15,8 @@ if (!isSupabase && !fs.existsSync(uploadDir)) {
 
 const diskStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const requested = String(req.body.tipo || "").trim();
+    // Compatibilidade: frontend envia `tipoArquivo`; alguns clientes legados enviam `tipo`.
+    const requested = String(req.body.tipoArquivo || req.body.tipo || "").trim();
     const allowed = Object.values(TIPOS_ARQUIVO || {});
     const subfolder = allowed.includes(requested) ? requested : "outros";
     const dest = path.join(uploadDir, subfolder);

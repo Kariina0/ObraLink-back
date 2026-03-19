@@ -21,27 +21,37 @@ const logger = require("../utils/logger");
 class StorageService {
   constructor() {
     this.provider = (process.env.STORAGE_PROVIDER || "local").toLowerCase();
+    this.bucket = process.env.SUPABASE_STORAGE_BUCKET || "obras-arquivos";
+
+    const hasSupabaseCredentials =
+      Boolean(process.env.SUPABASE_URL) &&
+      Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+    // C-5: Armazena a chave para sanitização de logs mas NUNCA a loga diretamente.
+    this._sensitiveKey = hasSupabaseCredentials
+      ? process.env.SUPABASE_SERVICE_ROLE_KEY
+      : null;
+
+    this.client = hasSupabaseCredentials
+      ? createClient(process.env.SUPABASE_URL, this._sensitiveKey, {
+          auth: { persistSession: false },
+        })
+      : null;
 
     if (this.provider === "supabase") {
-      if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      if (!this.client) {
         throw new Error(
           "SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY são obrigatórios quando STORAGE_PROVIDER=supabase",
         );
       }
-
-      // C-5: Armazena a chave para sanitização de logs mas NUNCA a loga diretamente.
-      this._sensitiveKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-      this.client = createClient(process.env.SUPABASE_URL, this._sensitiveKey, {
-        auth: { persistSession: false },
-      });
-      this.bucket = process.env.SUPABASE_STORAGE_BUCKET || "obras-arquivos";
       logger.info(
         `✅ StorageService iniciado — provider: supabase (bucket: ${this.bucket})`,
       );
     } else {
-      this._sensitiveKey = null;
-      logger.info("✅ StorageService iniciado — provider: local");
+      const mixedModeLabel = this.client
+        ? " (signed URL supabase habilitada para registros legados)"
+        : "";
+      logger.info(`✅ StorageService iniciado — provider: local${mixedModeLabel}`);
     }
   }
 
@@ -116,9 +126,14 @@ class StorageService {
    * @param {number} expiresIn   - Validade em segundos (padrão: 3600 = 1h)
    * @returns {Promise<string>} URL assinada
    */
-  async getSignedUrl(storagePath, expiresIn = 3600) {
-    if (this.provider !== "supabase") {
+  async getSignedUrl(storagePath, expiresIn = 3600, provider = this.provider) {
+    const normalizedProvider = String(provider || this.provider).toLowerCase();
+    if (normalizedProvider !== "supabase") {
       return `/api/files/raw/${storagePath}`;
+    }
+
+    if (!this.client) {
+      throw new Error("Credenciais do Supabase não configuradas para gerar signed URL");
     }
 
     const { data, error } = await this.client.storage

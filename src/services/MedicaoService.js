@@ -23,7 +23,13 @@ class MedicaoService {
 
     if (!Array.isArray(parsed)) return [];
     return parsed
-      .map((value) => Number(value))
+      .map((value) => {
+        // Compatibilidade com payload legado: anexos como objetos { id, ... }
+        if (value && typeof value === "object") {
+          return Number(value.id);
+        }
+        return Number(value);
+      })
       .filter((value) => Number.isInteger(value) && value > 0);
   }
 
@@ -37,6 +43,8 @@ class MedicaoService {
         .map(async (arquivo) => {
           arquivo.storage_url = await storageService.getSignedUrl(
             arquivo.storage_path,
+            3600,
+            arquivo.storage_provider,
           );
         }),
     );
