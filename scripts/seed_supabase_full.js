@@ -5,7 +5,7 @@
  *   paginação, filtros, aprovações, dashboard, relatórios e relacionamentos.
  *
  * Volume gerado:
- *   - 15 usuários  (2 admin · 4 supervisor · 9 encarregado)
+ *   - 18 usuários  (3 admin · 5 supervisor · 10 encarregado)
  *   - 12 obras
  *   - 27 vínculos  obra ↔ encarregado
  *   - 36 arquivos (3 fotos reais por obra)
@@ -238,14 +238,15 @@ async function seed() {
 
     /* ── 1. Hashes de senha ──────────────────────────────── */
     console.log("🔐  Gerando hashes de senha...");
-    const [hAdmin, hSupervisor, hEncarregado] = await Promise.all([
+    const [hAdmin, hSupervisor, hEncarregado, hAcessoSimples] = await Promise.all([
       bcrypt.hash("Admin@2025",       12),
       bcrypt.hash("Supervisor@2025",  12),
       bcrypt.hash("Enc@2025",         12),
+      bcrypt.hash("admin123",         12),
     ]);
 
-    /* ── 2. Usuários (15) ────────────────────────────────── */
-    console.log("\n👤  Criando usuários (15)...");
+    /* ── 2. Usuários (18) ────────────────────────────────── */
+    console.log("\n👤  Criando usuários (18)...");
 
     const USERS = [
       // ── Admins (2)
@@ -266,6 +267,10 @@ async function seed() {
       { nome: "Tiago Rocha",       email: "tiago.rocha@obralink.com",     senha: hEncarregado,  perfil: "encarregado"  },
       { nome: "Fábio Mendes",      email: "fabio.mendes@obralink.com",    senha: hEncarregado,  perfil: "encarregado"  },
       { nome: "Sérgio Nunes",      email: "sergio.nunes@obralink.com",    senha: hEncarregado,  perfil: "encarregado"  },
+      // ── Acessos simplificados (1 por perfil)
+      { nome: "Administrador Padrão", email: "administrador@obralink.com", senha: hAcessoSimples, perfil: "admin" },
+      { nome: "Supervisor Padrão",    email: "supervisor@obralink.com",    senha: hAcessoSimples, perfil: "supervisor" },
+      { nome: "Encarregado Padrão",   email: "encarregado@obralink.com",   senha: hAcessoSimples, perfil: "encarregado" },
     ];
 
     const userIds = [];
@@ -979,9 +984,9 @@ async function seed() {
     console.log(`  🛒 Solicitações:        ${totalSol.c}`);
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log("\n🔑  Credenciais de acesso:");
-    console.log("     Admin:        carlos.admin@obralink.com  / Admin@2025");
-    console.log("     Supervisor:   maria.sup@obralink.com     / Supervisor@2025");
-    console.log("     Encarregado:  joao.silva@obralink.com    / Enc@2025");
+    console.log("     Admin:        administrador@obralink.com  / admin123");
+    console.log("     Supervisor:   supervisor@obralink.com     / admin123");
+    console.log("     Encarregado:  encarregado@obralink.com    / admin123");
     console.log("");
 
   } catch (err) {
