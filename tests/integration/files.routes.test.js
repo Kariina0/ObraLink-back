@@ -12,9 +12,13 @@
  *  9.8  Sem autenticação: 401 em todas as rotas
  */
 
-const path = require("path");
 const { setupTestDb, teardownTestDb, getTestDb } = require("../helpers/database");
 const { adminToken, encarregadoToken } = require("../helpers/auth");
+const {
+  attachAllRealPhotos,
+  attachRealPhoto,
+  getRealPhotoFilename,
+} = require("../helpers/realPhotoFixtures");
 
 // ─── Mocks (devem ser declarados antes de qualquer require do app) ─────────────
 
@@ -62,12 +66,6 @@ const app     = require("../../src/app");
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// Buffer mínimo de JPEG válido (header JFIF)
-const FAKE_JPEG = Buffer.from(
-  "ffd8ffe000104a46494600010100000100010000ffd9",
-  "hex",
-);
-
 // Buffer > 5 MB
 const BIG_BUFFER = Buffer.alloc(6 * 1024 * 1024, "x");
 
@@ -105,8 +103,7 @@ beforeEach(() => {
 describe("9.8 — Autenticação obrigatória", () => {
   test("POST /api/files/upload sem token → 401", async () => {
     const res = await request(app)
-      .post("/api/files/upload")
-      .attach("file", FAKE_JPEG, { filename: "foto.jpg", contentType: "image/jpeg" });
+      .post("/api/files/upload");
 
     expect(res.status).toBe(401);
   });
@@ -127,14 +124,15 @@ describe("9.8 — Autenticação obrigatória", () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 describe("9.1 — Smoke upload (JPEG → Supabase)", () => {
   test("POST /api/files/upload retorna 201 e storageProvider=supabase", async () => {
-    const res = await request(app)
+    const req = request(app)
       .post("/api/files/upload")
       .set("Authorization", `Bearer ${adminToken}`)
       .field("obra", "1")
       .field("tipo", "fotos")
       .field("tipoArquivo", "foto_obra")
-      .field("descricao", "Foto de teste")
-      .attach("file", FAKE_JPEG, { filename: "foto.jpg", contentType: "image/jpeg" });
+      .field("descricao", "Foto de teste com fixture real");
+
+    const res = await attachRealPhoto(req, "file", 0);
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
@@ -144,21 +142,22 @@ describe("9.1 — Smoke upload (JPEG → Supabase)", () => {
     // Confirmar que storageService.upload foi chamado
     expect(mockStorageUpload).toHaveBeenCalledWith(
       expect.any(Buffer),
-      "foto.jpg",
+      getRealPhotoFilename(0),
       "fotos",
       "image/jpeg",
     );
   });
 
   test("registro é persistido no banco SQLite", async () => {
-    await request(app)
+    const req = request(app)
       .post("/api/files/upload")
       .set("Authorization", `Bearer ${adminToken}`)
       .field("obra", "1")
       .field("tipo", "fotos")
       .field("tipoArquivo", "foto_obra")
-      .field("descricao", "Foto persistida")
-      .attach("file", FAKE_JPEG, { filename: "persist.jpg", contentType: "image/jpeg" });
+      .field("descricao", "Foto persistida a partir de fixture real");
+
+    await attachRealPhoto(req, "file", 1);
 
     const db    = getTestDb();
     const rows  = await db("arquivos").where({ storage_provider: "supabase" }).select();
@@ -200,7 +199,11 @@ describe("9.2 — URL assinada no GET /api/files/:id", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.url).toBe("https://signed.supabase.co/fresh-url?token=new");
-    expect(mockStorageSignedUrl).toHaveBeenCalledWith("fotos/uuid-signed.jpg");
+    expect(mockStorageSignedUrl).toHaveBeenCalledWith(
+      "fotos/uuid-signed.jpg",
+      3600,
+      "supabase",
+    );
   });
 });
 
@@ -252,14 +255,15 @@ describe("9.4 — Fallback: STORAGE_PROVIDER=local", () => {
       filename:    "local-uuid.jpg",
     });
 
-    const res = await request(app)
+    const req = request(app)
       .post("/api/files/upload")
       .set("Authorization", `Bearer ${adminToken}`)
       .field("obra", "1")
       .field("tipo", "fotos")
       .field("tipoArquivo", "foto_obra")
-      .field("descricao", "Arquivo local de teste")
-      .attach("file", FAKE_JPEG, { filename: "local.jpg", contentType: "image/jpeg" });
+      .field("descricao", "Arquivo local de teste com fixture real");
+
+    const res = await attachRealPhoto(req, "file", 2);
 
     // Em modo local o multer usa memoryStorage (mock), portanto o
     // storageService.upload também é chamado via ArquivoService
@@ -280,16 +284,15 @@ describe("9.5 — Múltiplos uploads", () => {
       .mockResolvedValueOnce({ ...uploadResponse(), storagePath: "fotos/b.jpg", filename: "b.jpg" })
       .mockResolvedValueOnce({ ...uploadResponse(), storagePath: "fotos/c.jpg", filename: "c.jpg" });
 
-    const res = await request(app)
+    const req = request(app)
       .post("/api/files/upload-multiple")
       .set("Authorization", `Bearer ${adminToken}`)
       .field("obra", "1")
       .field("tipo", "fotos")
       .field("tipoArquivo", "foto_obra")
-      .field("descricao", "Múltiplos arquivos")
-      .attach("files", FAKE_JPEG, { filename: "a.jpg", contentType: "image/jpeg" })
-      .attach("files", FAKE_JPEG, { filename: "b.jpg", contentType: "image/jpeg" })
-      .attach("files", FAKE_JPEG, { filename: "c.jpg", contentType: "image/jpeg" });
+      .field("descricao", "Múltiplos arquivos reais da obra");
+
+    const res = await attachAllRealPhotos(req, "files");
 
     expect(res.status).toBe(201);
     expect(res.body.data.uploaded).toHaveLength(3);

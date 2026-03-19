@@ -27,6 +27,7 @@ npm run migrate           # Aplica migrations pendentes
 npm run migrate:rollback  # Reverte a última migration
 npm run seed:sqlite       # Seed com dados de exemplo (SQLite)
 npm run seed:postgres     # Seed com dados de exemplo (PostgreSQL)
+npm run seed:supabase     # Seed completo no Supabase + upload de fotos reais (imagens/ ou frontend/static)
 npm run seed              # Seed genérico
 ```
 

@@ -157,6 +157,23 @@ describe("GET /api/solicitacoes", () => {
     expect(Array.isArray(res.body.data.data)).toBe(true);
   });
 
+  test("200 — solicitações retornam com solicitanteNome preenchido", async () => {
+    const res = await request(app)
+      .get("/api/solicitacoes")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    // Verificar se há dados e se aplicavelmente solicitanteNome
+    if (res.body.data.data.length > 0) {
+      res.body.data.data.forEach((sol) => {
+        // Solicitantes sempre devem ter um nome (já que foi criado no beforeAll)
+        expect(sol.solicitante).toBeDefined();
+        expect(sol.solicitanteNome).toBeTruthy(); // Deve ter um nome
+      });
+    }
+  });
+
   test("200 — encarregado vê apenas as próprias", async () => {
     const res = await request(app)
       .get("/api/solicitacoes")
@@ -214,6 +231,16 @@ describe("GET /api/solicitacoes/:id", () => {
     expect(res.body.data.id).toBe(createdId);
   });
 
+  test("200 — retorna solicitação com solicitanteNome preenchido", async () => {
+    const res = await request(app)
+      .get(`/api/solicitacoes/${createdId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.solicitante).toBe(1);
+    expect(res.body.data.solicitanteNome).toBe("Admin");
+  });
+
   test("404 — ID inexistente", async () => {
     const res = await request(app)
       .get("/api/solicitacoes/999999")
@@ -255,6 +282,8 @@ describe("POST /api/solicitacoes/:id/aprovar", () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.status).toBe("aprovada");
+    expect(res.body.data.aprovadoPor).toBe(2);
+    expect(res.body.data.aprovadoPorNome).toBe("Supervisor");
   });
 });
 
@@ -291,5 +320,7 @@ describe("POST /api/solicitacoes/:id/rejeitar", () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.status).toBe("rejeitada");
+    expect(res.body.data.aprovadoPor).toBe(1);
+    expect(res.body.data.aprovadoPorNome).toBe("Admin");
   });
 });

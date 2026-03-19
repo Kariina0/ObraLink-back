@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Joi = require("joi");
 const solicitacaoRepository = require("../repositories/SolicitacaoCompraRepository");
+const SolicitacaoCompraDTO = require("../dtos/SolicitacaoCompraDTO");
 const { authenticate, authorize } = require("../middleware/auth");
 const { validate } = require("../middleware/validation");
 const { successResponse } = require("../utils/helpers");
@@ -40,18 +41,6 @@ const updateStatusSchema = Joi.object({
   motivoRejeicao: Joi.string().allow("", null),
 });
 
-// ── Helper: desserializa o campo itens (armazenado como JSON string) ─────────
-const deserializeItens = (s) => ({
-  ...s,
-  itens: (() => {
-    if (Array.isArray(s.itens)) return s.itens;
-    if (typeof s.itens === "string") {
-      try { return JSON.parse(s.itens); } catch (_) { return []; }
-    }
-    return [];
-  })(),
-});
-
 // ── Todas as rotas exigem autenticação ────────────────────────────────────────
 router.use(authenticate);
 
@@ -82,9 +71,12 @@ router.post(
       syncId: generateSyncId(),
     });
 
+    // Enriquecer a resposta com nomes
+    const solicitacaoEnriquecida = await solicitacaoRepository.findByIdWithUsers(solicitacao.id);
+
     res
       .status(201)
-      .json(successResponse(solicitacao, "Solicitação criada com sucesso"));
+      .json(successResponse(new SolicitacaoCompraDTO(solicitacaoEnriquecida), "Solicitação criada com sucesso"));
   })
 );
 
@@ -99,7 +91,6 @@ router.get(
     const page  = Math.max(1, parseInt(req.query.page, 10)  || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const { status } = req.query;
-    const opts = { page, limit };
 
     const filter = {};
     if (req.user.perfil === PERFIS.ENCARREGADO) {
@@ -107,12 +98,12 @@ router.get(
     }
     if (status) filter.status = status;
 
-    const result = await solicitacaoRepository.findAll(filter, opts);
-    const deserializedResult = {
+    const result = await solicitacaoRepository.findAllWithUsers(filter, { page, limit });
+    const dtoResult = {
       ...result,
-      data: Array.isArray(result.data) ? result.data.map(deserializeItens) : result.data,
+      data: Array.isArray(result.data) ? result.data.map(s => new SolicitacaoCompraDTO(s)) : result.data,
     };
-    res.json(successResponse(deserializedResult, "Solicitações listadas"));
+    res.json(successResponse(dtoResult, "Solicitações listadas"));
   })
 );
 
@@ -127,7 +118,7 @@ router.get(
     const id = parseInt(req.params.id, 10);
     if (isNaN(id) || id <= 0) throw new ValidationError("ID inválido");
 
-    const solicitacao = await solicitacaoRepository.findById(id);
+    const solicitacao = await solicitacaoRepository.findByIdWithUsers(id);
 
     if (
       req.user.perfil === PERFIS.ENCARREGADO &&
@@ -136,7 +127,7 @@ router.get(
       throw new ForbiddenError("Você não tem permissão para acessar esta solicitação");
     }
 
-    res.json(successResponse(deserializeItens(solicitacao), "Solicitação encontrada"));
+    res.json(successResponse(new SolicitacaoCompraDTO(solicitacao), "Solicitação encontrada"));
   })
 );
 
@@ -152,8 +143,10 @@ router.post(
     const id = parseInt(req.params.id, 10);
     if (isNaN(id) || id <= 0) throw new ValidationError("ID inválido");
 
-    const solicitacao = await solicitacaoRepository.aprovar(id, req.user.id);
-    res.json(successResponse(solicitacao, "Solicitação aprovada com sucesso"));
+    await solicitacaoRepository.aprovar(id, req.user.id);
+    // Retornar dados enriquecidos
+    const solicitacao = await solicitacaoRepository.findByIdWithUsers(id);
+    res.json(successResponse(new SolicitacaoCompraDTO(solicitacao), "Solicitação aprovada com sucesso"));
   })
 );
 
@@ -170,12 +163,14 @@ router.post(
     const id = parseInt(req.params.id, 10);
     if (isNaN(id) || id <= 0) throw new ValidationError("ID inválido");
 
-    const solicitacao = await solicitacaoRepository.rejeitar(
+    await solicitacaoRepository.rejeitar(
       id,
       req.body.motivoRejeicao || null,
       req.user.id
     );
-    res.json(successResponse(solicitacao, "Solicitação rejeitada com sucesso"));
+    // Retornar dados enriquecidos
+    const solicitacao = await solicitacaoRepository.findByIdWithUsers(id);
+    res.json(successResponse(new SolicitacaoCompraDTO(solicitacao), "Solicitação rejeitada com sucesso"));
   })
 );
 

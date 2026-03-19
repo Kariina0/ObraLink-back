@@ -76,6 +76,15 @@ npm run seed:sqlite
 
 Cria usuários de teste, obras e dados iniciais para validação local.
 
+Para ambiente Supabase (PostgreSQL + Storage), use:
+
+```bash
+npm run seed:supabase
+```
+
+Esse seed completo inclui upload de fotos reais (`foto-obra*.jpg`) para o bucket configurado,
+criando registros em `arquivos` e vinculando os IDs nas medições e diários.
+
 **Credenciais criadas pelo seed:**
 
 | Usuário | Email | Senha | Perfil |

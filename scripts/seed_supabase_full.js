@@ -8,6 +8,7 @@
  *   - 15 usuários  (2 admin · 4 supervisor · 9 encarregado)
  *   - 12 obras
  *   - 27 vínculos  obra ↔ encarregado
+ *   - 36 arquivos (3 fotos reais por obra)
  *   - 80 medições  (rascunho · enviada · aprovada · rejeitada)
  *   - 50 diários de obra
  *   - 40 solicitações de compra
@@ -18,7 +19,7 @@
  *
  * ⚠  Execute apenas uma vez por ambiente.
  *    Usuários e obras são idempotentes (upsert por e-mail / código).
- *    Medições, diários e solicitações são inseridas sem deduplicação.
+ *    Arquivos, medições, diários e solicitações são inseridos sem deduplicação.
  *    Se precisar reexecutar do zero, truncate as tabelas primeiro.
  */
 
@@ -29,6 +30,10 @@ const knexfile = require("../knexfile.js");
 const Knex     = require("knex");
 const bcrypt   = require("bcryptjs");
 const { v4: uuidv4 } = require("uuid");
+const fs = require("fs");
+const fsp = require("fs").promises;
+const path = require("path");
+const { createClient } = require("@supabase/supabase-js");
 
 const knex = Knex(knexfile[process.env.NODE_ENV || "development"]);
 
@@ -84,6 +89,93 @@ function itensSolicitacao(itens) {
     valorUnitario: it.valorUnitario,
     valorTotal:    it.quantidade * it.valorUnitario,
   }));
+}
+
+const PHOTO_FIXTURE_NAMES = ["foto-obra.jpg", "foto-obra1.jpg", "foto-obra2.jpg"];
+const PHOTO_FIXTURE_DIRS = [
+  path.resolve(__dirname, "../imagens"),
+  path.resolve(__dirname, "../../frontend/static"),
+];
+
+function resolvePhotoFixturePath(filename) {
+  for (const dirPath of PHOTO_FIXTURE_DIRS) {
+    const filePath = path.join(dirPath, filename);
+    if (fs.existsSync(filePath)) return filePath;
+  }
+
+  throw new Error(
+    `Fixture de foto não encontrado: ${filename} (diretórios verificados: ${PHOTO_FIXTURE_DIRS.join(", ")})`,
+  );
+}
+
+async function loadPhotoFixtures() {
+  const fixtures = [];
+
+  for (const filename of PHOTO_FIXTURE_NAMES) {
+    const filePath = resolvePhotoFixturePath(filename);
+    const buffer = await fsp.readFile(filePath);
+    const stat = await fsp.stat(filePath);
+
+    fixtures.push({
+      filename,
+      filePath,
+      buffer,
+      size: stat.size,
+      mimeType: "image/jpeg",
+      extension: path.extname(filename) || ".jpg",
+    });
+  }
+
+  return fixtures;
+}
+
+function createSeedStorageClient() {
+  const bucket = process.env.SUPABASE_STORAGE_BUCKET || "obras-arquivos";
+  const url = process.env.SUPABASE_URL;
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !serviceRole) {
+    return { provider: "local", bucket, client: null };
+  }
+
+  return {
+    provider: "supabase",
+    bucket,
+    client: createClient(url, serviceRole, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    }),
+  };
+}
+
+async function uploadFixtureToStorage(storage, fixture, storagePath) {
+  if (storage.provider !== "supabase" || !storage.client) {
+    return {
+      provider: "local",
+      storagePath,
+      storageUrl: `/api/files/raw/${storagePath}`,
+    };
+  }
+
+  const { error: uploadError } = await storage.client.storage
+    .from(storage.bucket)
+    .upload(storagePath, fixture.buffer, {
+      contentType: fixture.mimeType,
+      upsert: true,
+    });
+
+  if (uploadError) {
+    throw new Error(`Falha no upload do seed para Supabase: ${uploadError.message}`);
+  }
+
+  const { data: signed, error: signedError } = await storage.client.storage
+    .from(storage.bucket)
+    .createSignedUrl(storagePath, 7 * 24 * 60 * 60);
+
+  return {
+    provider: "supabase",
+    storagePath,
+    storageUrl: signedError ? null : signed?.signedUrl || null,
+  };
 }
 
 /* ═══════════════════════════ DADOS BASE ═════════════════════════════════ */
@@ -390,6 +482,72 @@ async function seed() {
       [enc9]: [obraIds[3], obraIds[8], obraIds[11]],
     };
 
+    /* ── 5.1 Arquivos/Fotos reais (36) ─────────────────── */
+    console.log("\n🖼️   Criando arquivos com fotos reais (3 por obra)...");
+
+    const storage = createSeedStorageClient();
+    const photoFixtures = await loadPhotoFixtures();
+    const fotosPorObra = new Map();
+
+    for (let obraIdx = 0; obraIdx < obraIds.length; obraIdx++) {
+      const obraId = obraIds[obraIdx];
+      const vinculosDaObra = VINCULOS
+        .filter(([idx]) => idx === obraIdx)
+        .map(([, userId]) => userId);
+
+      const fotoIds = [];
+
+      for (let photoIndex = 0; photoIndex < photoFixtures.length; photoIndex++) {
+        const fixture = photoFixtures[photoIndex];
+        const uploaderId =
+          vinculosDaObra[photoIndex % Math.max(vinculosDaObra.length, 1)] || enc1;
+
+        const uniqueName = `${OBRAS_DEF[obraIdx].codigo.toLowerCase()}-${uuidv4()}${fixture.extension}`;
+        const storagePath = `fotos/seed/${OBRAS_DEF[obraIdx].codigo.toLowerCase()}/${uniqueName}`;
+        const uploaded = await uploadFixtureToStorage(storage, fixture, storagePath);
+
+        const tipoArquivo =
+          photoIndex === 0
+            ? "foto_obra"
+            : photoIndex === 1
+              ? "relatorio"
+              : "medicao";
+
+        const inserted = await knex("arquivos")
+          .insert({
+            nome: uniqueName,
+            nomeOriginal: fixture.filename,
+            tipo: "fotos",
+            tipoArquivo,
+            mimeType: fixture.mimeType,
+            tamanho: fixture.size,
+            tamanhoOriginal: fixture.size,
+            descricao: `Seed automático (${tipoArquivo}) — ${OBRAS_DEF[obraIdx].nome}`,
+            obra: obraId,
+            uploadedBy: uploaderId,
+            comprimido: false,
+            sincronizado: true,
+            syncId: uuidv4(),
+            storage_provider: uploaded.provider,
+            storage_path: uploaded.storagePath,
+            storage_url: uploaded.storageUrl,
+            metadata: JSON.stringify({
+              createdAt: now(),
+              createdBy: uploaderId,
+              source: "seed_supabase_full",
+            }),
+          })
+          .returning("id");
+
+        fotoIds.push(extractId(inserted));
+      }
+
+      fotosPorObra.set(obraId, fotoIds);
+      console.log(`  ✅  Obra ${OBRAS_DEF[obraIdx].codigo}: ${fotoIds.length} fotos vinculadas`);
+    }
+
+    console.log(`  📦  Storage provider do seed: ${storage.provider} (bucket: ${storage.bucket})`);
+
     /* ── 6. Medições (80) ────────────────────────────────── */
     console.log("\n📐  Criando medições (80)...");
 
@@ -524,6 +682,13 @@ async function seed() {
 
       const itensRaw = gerarItensMedicao(area, tipoServico, areaCalculada, volume);
       const itens    = itensMedicao(itensRaw);
+      const anexosDaObra = fotosPorObra.get(obraId) || [];
+      const anexosMedicao = anexosDaObra.length > 0
+        ? [
+            anexosDaObra[i % anexosDaObra.length],
+            anexosDaObra[(i + 1) % anexosDaObra.length],
+          ].filter((id, idx, arr) => id && arr.indexOf(id) === idx)
+        : [];
 
       const dataAprovacao = (status === "aprovada" || status === "rejeitada")
         ? new Date(dataReg.getTime() + 3 * 24 * 60 * 60 * 1000)
@@ -545,6 +710,7 @@ async function seed() {
         areaCalculada,
         volume,
         itens:           JSON.stringify(itens),
+        anexos:          JSON.stringify(anexosMedicao),
         observacoes:     gerarObservacaoMedicao(area, tipoServico),
         status,
         aprovadoPor:     aprovadoPorId || null,
@@ -643,12 +809,20 @@ async function seed() {
     ];
 
     console.log(`  → Inserindo ${DIARIO_DEFS.length} diários...`);
-    for (const [encId, obraIdx, climaIdx, ativIndices, offsetDias] of DIARIO_DEFS) {
+    for (let diarioIndex = 0; diarioIndex < DIARIO_DEFS.length; diarioIndex++) {
+      const [encId, obraIdx, climaIdx, ativIndices, offsetDias] = DIARIO_DEFS[diarioIndex];
       const obraId   = obraIds[obraIdx];
       const dataReg  = new Date("2025-01-01");
       dataReg.setDate(dataReg.getDate() + offsetDias);
       const clima    = CLIMAS[climaIdx];
       const atividades = ativIndices.map(i => ATIVIDADES_POOL[i % ATIVIDADES_POOL.length]);
+      const fotosDaObra = fotosPorObra.get(obraId) || [];
+      const fotosDiario = fotosDaObra.length > 0
+        ? [
+            fotosDaObra[diarioIndex % fotosDaObra.length],
+            fotosDaObra[(diarioIndex + 2) % fotosDaObra.length],
+          ].filter((id, idx, arr) => id && arr.indexOf(id) === idx)
+        : [];
 
       await knex("diarios").insert({
         obra:             obraId,
@@ -660,6 +834,7 @@ async function seed() {
         maoDeObra:        JSON.stringify(gerarMaoDeObra()),
         materiais:        JSON.stringify(gerarMateriais(atividades[0])),
         ocorrencias:      gerarOcorrencias(climaIdx),
+        fotos:            JSON.stringify(fotosDiario),
         observacoesGerais: gerarObsGeral(),
         sincronizado:     true,
         syncId:           uuidv4(),
@@ -787,6 +962,7 @@ async function seed() {
     const [totalUsers]  = await knex("users").count("id as c");
     const [totalObras]  = await knex("obras").count("id as c");
     const [totalVinc]   = await knex("obra_encarregados").count("id as c");
+    const [totalArq]    = await knex("arquivos").count("id as c");
     const [totalMed]    = await knex("medicoes").count("id as c");
     const [totalDiar]   = await knex("diarios").count("id as c");
     const [totalSol]    = await knex("solicitacoes_compra").count("id as c");
@@ -797,6 +973,7 @@ async function seed() {
     console.log(`  👤 Usuários:            ${totalUsers.c}`);
     console.log(`  🏗️  Obras:               ${totalObras.c}`);
     console.log(`  🔗 Vínculos:            ${totalVinc.c}`);
+    console.log(`  🖼️  Arquivos/Fotos:      ${totalArq.c}`);
     console.log(`  📐 Medições:            ${totalMed.c}`);
     console.log(`  📋 Diários:             ${totalDiar.c}`);
     console.log(`  🛒 Solicitações:        ${totalSol.c}`);

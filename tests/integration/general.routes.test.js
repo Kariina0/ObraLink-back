@@ -17,6 +17,10 @@ const {
   teardownFullDb,
   getFullDb,
 } = require("../helpers/fullDatabase");
+const {
+  attachRealPhoto,
+  getRealPhotoFilename,
+} = require("../helpers/realPhotoFixtures");
 
 // ── Mocks (devem preceder qualquer require do app) ────────────────────────────
 jest.mock("../../src/config/database", () => ({
@@ -37,8 +41,53 @@ jest.mock("../../src/config/supabaseClient", () => {
   return mock;
 });
 
+const mockStorageUpload = jest.fn();
+const mockStorageSignedUrl = jest.fn();
+const mockStorageDelete = jest.fn();
+const mockStorageIsSupabase = jest.fn().mockReturnValue(true);
+
+jest.mock("../../src/services/StorageService", () => ({
+  isSupabase: mockStorageIsSupabase,
+  upload: mockStorageUpload,
+  getSignedUrl: mockStorageSignedUrl,
+  delete: mockStorageDelete,
+}));
+
 // ── App (after mocks) ─────────────────────────────────────────────────────────
 const app = require("../../src/app");
+
+function buildUploadResponse(index = 0) {
+  const filename = getRealPhotoFilename(index);
+
+  return {
+    storagePath: `fotos/${filename}`,
+    storageUrl: `https://signed.supabase.co/fotos/${filename}?token=test`,
+    provider: "supabase",
+    filename,
+  };
+}
+
+async function uploadPhotoFixture(token, index = 0, overrides = {}) {
+  mockStorageUpload.mockResolvedValueOnce(buildUploadResponse(index));
+  mockStorageSignedUrl.mockResolvedValue(
+    `https://signed.supabase.co/fotos/${getRealPhotoFilename(index)}?token=fresh`,
+  );
+
+  const req = request(app)
+    .post("/api/files/upload")
+    .set("Authorization", `Bearer ${token}`)
+    .field("obra", String(overrides.obra ?? 1))
+    .field("tipo", overrides.tipo ?? "fotos")
+    .field("tipoArquivo", overrides.tipoArquivo ?? "foto_obra")
+    .field("descricao", overrides.descricao ?? `Fixture ${getRealPhotoFilename(index)}`);
+
+  const res = await attachRealPhoto(req, "file", index);
+
+  expect(res.status).toBe(201);
+  expect(res.body.success).toBe(true);
+
+  return res.body.data;
+}
 
 // ── Setup / Teardown ──────────────────────────────────────────────────────────
 beforeAll(async () => {
@@ -71,6 +120,15 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await teardownFullDb();
+});
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockStorageIsSupabase.mockReturnValue(true);
+  mockStorageSignedUrl.mockResolvedValue(
+    "https://signed.supabase.co/fotos/default.jpg?token=fresh",
+  );
+  mockStorageDelete.mockResolvedValue(undefined);
 });
 
 // ── Tokens ────────────────────────────────────────────────────────────────────
@@ -226,6 +284,49 @@ describe("POST /api/measurements", () => {
     expect(res.body.data.status).toBe("rascunho");
   });
 
+  test("201 — cria medição com fotos reais anexadas via upload prévio", async () => {
+    const fotoObra = await uploadPhotoFixture(adminToken, 0, {
+      descricao: "Foto real para anexar na medição",
+    });
+    const relatorio = await uploadPhotoFixture(adminToken, 1, {
+      tipoArquivo: "medicao",
+      descricao: "Relatório fotográfico da medição",
+    });
+
+    const res = await request(app)
+      .post("/api/measurements")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        obra: 1,
+        area: "Fachada Norte",
+        tipoServico: "revestimento",
+        comprimento: 12,
+        largura: 3,
+        altura: 2.8,
+        itens: [
+          {
+            descricao: "Revestimento externo",
+            quantidade: 36,
+            unidade: "m²",
+            valorUnitario: 78,
+            valorTotal: 2808,
+          },
+        ],
+        anexos: [fotoObra.id, relatorio.id],
+        observacoes: "Teste com fotos reais para validar anexos da medição",
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.temFoto).toBe(true);
+    expect(res.body.data.anexos).toHaveLength(2);
+    expect(res.body.data.anexos[0].id).toBe(fotoObra.id);
+    expect(res.body.data.anexos[1].id).toBe(relatorio.id);
+    expect(res.body.data.fotoUrl).toMatch(/signed\.supabase\.co/);
+    expect(res.body.data.areaCalculada).toBe(36);
+    expect(res.body.data.volume).toBeCloseTo(100.8);
+  });
+
   test("400 — rejeita payload sem itens obrigatórios", async () => {
     const res = await request(app)
       .post("/api/measurements")
@@ -277,6 +378,8 @@ describe("GET /api/measurements/:id", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send({
         obra: 1,
+        area: "Cobertura",
+        tipoServico: "acabamento",
         itens: [{ descricao: "Para buscar", quantidade: 1, unidade: "un" }],
       });
     medicaoId = res.body.data?.id;
@@ -290,12 +393,20 @@ describe("GET /api/measurements/:id", () => {
   });
 
   test("200 — retorna medição existente", async () => {
+    const anexo = await uploadPhotoFixture(adminToken, 2, {
+      tipoArquivo: "medicao",
+      descricao: "Imagem real para retorno da medição",
+    });
+
     const createRes = await request(app)
       .post("/api/measurements")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({
         obra: 1,
+        area: "Reservatório",
+        tipoServico: "impermeabilizacao",
         itens: [{ descricao: "Buscar por ID", quantidade: 2, unidade: "m" }],
+        anexos: [anexo.id],
       });
 
     const id = createRes.body.data?.id;
@@ -307,5 +418,63 @@ describe("GET /api/measurements/:id", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.id).toBe(id);
+    expect(res.body.data.temFoto).toBe(true);
+    expect(res.body.data.anexos).toHaveLength(1);
+    expect(res.body.data.anexos[0].id).toBe(anexo.id);
+    expect(res.body.data.fotoUrl).toMatch(/signed\.supabase\.co/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// POST /api/diarios — criar diário com fotos reais
+// ═══════════════════════════════════════════════════════════════════════════════
+describe("POST /api/diarios", () => {
+  test("201 — cria diário com fotos reais previamente enviadas", async () => {
+    const foto1 = await uploadPhotoFixture(adminToken, 0, {
+      descricao: "Foto de avanço físico da obra",
+    });
+    const foto2 = await uploadPhotoFixture(adminToken, 1, {
+      tipoArquivo: "relatorio",
+      descricao: "Relatório fotográfico diário",
+    });
+
+    const createRes = await request(app)
+      .post("/api/diarios")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        obra: 1,
+        data: "2026-03-15T08:00:00.000Z",
+        clima: "ensolarado",
+        atividades: [
+          {
+            descricao: "Execução de reboco interno",
+            quantidade: 1,
+            unidade: "frente",
+          },
+        ],
+        equipamentos: [
+          {
+            descricao: "Betoneira 400L",
+            quantidade: 1,
+            unidade: "un",
+          },
+        ],
+        fotos: [foto1.id, foto2.id],
+        observacoesGerais: "Teste do diário com envio prévio de fotos reais",
+      });
+
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.success).toBe(true);
+    expect(createRes.body.data.fotos).toEqual([foto1.id, foto2.id]);
+
+    const diarioId = createRes.body.data.id;
+    const getRes = await request(app)
+      .get(`/api/diarios/${diarioId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.data.id).toBe(diarioId);
+    expect(getRes.body.data.fotos).toEqual([foto1.id, foto2.id]);
+    expect(getRes.body.data.atividades).toHaveLength(1);
   });
 });

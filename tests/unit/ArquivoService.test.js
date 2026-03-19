@@ -323,7 +323,11 @@ describe("getById", () => {
 
     const result = await arquivoService.getById(10);
 
-    expect(mockStorageSignedUrl).toHaveBeenCalledWith("fotos/uuid-abc.jpg");
+    expect(mockStorageSignedUrl).toHaveBeenCalledWith(
+      "fotos/uuid-abc.jpg",
+      3600,
+      "supabase",
+    );
     expect(result.storage_url).toBe("https://supabase.co/new-signed-url");
   });
 
