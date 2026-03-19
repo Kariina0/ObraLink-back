@@ -35,7 +35,13 @@ app.use(
     credentials: true,
   }),
 );
-app.use(helmet());
+app.use(
+  helmet({
+    // Permite que imagens/arquivos servidos pela API sejam incorporados
+    // pelo frontend hospedado em outro domínio (Vercel).
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
+);
 app.use(compression());
 
 const limiter = rateLimit({

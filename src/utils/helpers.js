@@ -1,3 +1,5 @@
+const { URL } = require("url");
+
 /**
  * Formata resposta de sucesso padronizada
  */
@@ -191,9 +193,18 @@ const toAbsoluteUrl = (req, resourceUrl) => {
 
   if (!configuredBase) return resourceUrl;
 
-  const normalizedBase = configuredBase.endsWith("/")
-    ? configuredBase
-    : `${configuredBase}/`;
+  const forwardedProto = req?.get?.("x-forwarded-proto");
+  const requestProto = forwardedProto
+    ? forwardedProto.split(",")[0].trim()
+    : req?.protocol;
+  const effectiveBase =
+    requestProto === "https" && /^http:\/\//i.test(configuredBase)
+      ? configuredBase.replace(/^http:\/\//i, "https://")
+      : configuredBase;
+
+  const normalizedBase = effectiveBase.endsWith("/")
+    ? effectiveBase
+    : `${effectiveBase}/`;
 
   return new URL(resourceUrl, normalizedBase).toString();
 };

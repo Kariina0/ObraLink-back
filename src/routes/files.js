@@ -9,16 +9,15 @@ const { validate } = require("../middleware/validation");
 const { uploadArquivoSchema } = require("../validators/arquivoValidator");
 const { PERFIS } = require("../constants");
 
-const rawFileAccessMiddleware =
-  process.env.NODE_ENV === "production" ? authenticate : optionalAuth;
+const rawFileAccessMiddleware = optionalAuth;
 
 /**
  * @route GET /api/files/raw/:tipo/:filename
- * @desc Servir arquivo local em disco com autenticação obrigatória (CC-02).
+ * @desc Servir arquivo local em disco para visualização.
  *       Substitui o express.static público de /uploads.
  *       Apenas STORAGE_PROVIDER=local utiliza esta rota; no modo Supabase
  *       os arquivos são acessados via URLs assinadas diretamente.
- * @access Private
+ * @access Public
  */
 router.get("/raw/:tipo/:filename", rawFileAccessMiddleware, async (req, res, next) => {
   try {
@@ -63,7 +62,8 @@ router.get("/raw/:tipo/:filename", rawFileAccessMiddleware, async (req, res, nex
     };
     const ext = path.extname(readablePath).toLowerCase();
     res.setHeader("Content-Type", MIME[ext] || "application/octet-stream");
-    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     fs.createReadStream(readablePath).pipe(res);
   } catch (err) {
     if (err.code === "ENOENT") {
