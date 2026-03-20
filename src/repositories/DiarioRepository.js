@@ -5,6 +5,22 @@ class DiarioRepository extends BaseRepository {
     super("diarios");
   }
 
+  _normalizeDateInput(value) {
+    if (value instanceof Date) {
+      return new Date(value.getTime());
+    }
+
+    if (typeof value === "string") {
+      const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (match) {
+        const [, year, month, day] = match;
+        return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0, 0));
+      }
+    }
+
+    return new Date(value);
+  }
+
   /**
    * Enriquece um array de diários com obraNome e responsavelNome.
    * Usa queries separadas em lote para evitar dependência de FK no schema cache do PostgREST.
@@ -164,10 +180,13 @@ class DiarioRepository extends BaseRepository {
    * Filtra por intervalo [00:00:00, 23:59:59] da data informada.
    */
   async findByData(obraId, data) {
-    const inicio = new Date(data);
-    inicio.setHours(0, 0, 0, 0);
-    const fim = new Date(data);
-    fim.setHours(23, 59, 59, 999);
+    const referencia = this._normalizeDateInput(data);
+    const inicio = new Date(referencia);
+    inicio.setUTCHours(0, 0, 0, 0);
+    const fim = new Date(referencia);
+    fim.setUTCHours(23, 59, 59, 999);
+    const targetUtcDay = referencia.toISOString().slice(0, 10);
+    const targetLocalDay = `${referencia.getFullYear()}-${String(referencia.getMonth() + 1).padStart(2, "0")}-${String(referencia.getDate()).padStart(2, "0")}`;
 
     const { data: rows, error } = await this._runWithDeletedAtFallback((withDeletedAt) => {
       let query = this.supabase
@@ -185,7 +204,40 @@ class DiarioRepository extends BaseRepository {
     });
 
     if (error) throw error;
-    return rows ?? null;
+    if (rows) return rows;
+
+    // Fallback robusto para ambientes com serialização de datetime inconsistente
+    // (ex.: SQLite em testes): compara apenas o dia UTC em memória.
+    const { data: allRows, error: fallbackError } = await this._runWithDeletedAtFallback((withDeletedAt) => {
+      let query = this.supabase
+        .from(this.table)
+        .select("*")
+        .eq("obra", obraId);
+
+      if (withDeletedAt) {
+        query = query.is("deletedAt", null);
+      }
+
+      return query;
+    });
+
+    if (fallbackError) throw fallbackError;
+
+    const match = (allRows || []).find((row) => {
+      if (!row?.data) return false;
+      const normalized = this._normalizeDateInput(row.data);
+      if (Number.isNaN(normalized.getTime())) return false;
+      const rowUtcDay = normalized.toISOString().slice(0, 10);
+      const rowLocalDay = `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, "0")}-${String(normalized.getDate()).padStart(2, "0")}`;
+      return (
+        rowUtcDay === targetUtcDay
+        || rowLocalDay === targetLocalDay
+        || rowUtcDay === targetLocalDay
+        || rowLocalDay === targetUtcDay
+      );
+    });
+
+    return match || null;
   }
 
   /**

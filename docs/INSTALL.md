@@ -1,169 +1,121 @@
-﻿# Instalação e execução
+# Instalação e execução local
 
-> Guia para rodar o ObraLink (backend + frontend) em ambiente local.
+Guia completo para subir o backend com configuração correta para o estado atual do código.
 
----
+## Sumário
+
+- [Pré-requisitos](#pré-requisitos)
+- [Configuração rápida](#configuração-rápida)
+- [Variáveis de ambiente obrigatórias](#variáveis-de-ambiente-obrigatórias)
+- [Variáveis opcionais](#variáveis-opcionais)
+- [Migrations e seeds](#migrations-e-seeds)
+- [Subida da API](#subida-da-api)
+- [Checklist de validação](#checklist-de-validação)
 
 ## Pré-requisitos
 
-| Ferramenta | Versão mínima |
-|------------|---------------|
-| Node.js | `>=18` |
-| npm | incluído no Node.js |
+| Item | Requisito |
+|---|---|
+| Node.js | >= 18 |
+| npm | >= 9 |
+| Projeto Supabase | URL e service role key válidas |
 
----
-
-## Backend
-
-### 1. Instalar dependências
+## Configuração rápida
 
 ```bash
 cd backend
 npm install
 ```
 
-### 2. Configurar variáveis de ambiente
+Crie `.env` na raiz do backend.
 
-Copie o arquivo de exemplo e edite os valores:
+## Variáveis de ambiente obrigatórias
 
-```bash
-copy .env.example .env
+> Estas variáveis são validadas em `src/utils/validateEnv.js` e bloqueiam o startup se ausentes.
+
+```env
+JWT_SECRET=seu_jwt_secret
+JWT_REFRESH_SECRET=seu_jwt_refresh_secret
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=sua_service_role_key
 ```
 
-Configurações mínimas para desenvolvimento:
+Obrigatória quando `STORAGE_PROVIDER=supabase`:
+
+```env
+SUPABASE_STORAGE_BUCKET=obras-arquivos
+```
+
+## Variáveis opcionais
 
 ```env
 NODE_ENV=development
 PORT=5000
+JWT_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
 
-# JWT — use strings longas e aleatórias em produção
-JWT_SECRET=defina_um_segredo_forte
-JWT_REFRESH_SECRET=defina_outro_segredo_forte
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
+RATE_LIMIT_MAX=100
+LOGIN_RATE_LIMIT_MAX=10
+REFRESH_RATE_LIMIT_MAX=30
+FORGOT_PASSWORD_RATE_LIMIT_MAX=5
+RESET_PASSWORD_RATE_LIMIT_MAX=8
+RESET_PASSWORD_TTL_MINUTES=15
 
-# CORS — origem do frontend
-ALLOWED_ORIGINS=http://localhost:3000
-
-# Armazenamento de arquivos
 STORAGE_PROVIDER=local
 UPLOAD_PATH=./uploads
 MAX_FILE_SIZE=5242880
-ALLOWED_FILE_TYPES=image/jpeg,image/png,image/jpg,application/pdf
+ALLOWED_FILE_TYPES=image/jpeg,image/png,image/jpg,application/pdf,image/heic,image/heif
 IMAGE_COMPRESSION_QUALITY=80
+
+EMAIL_HOST=
+EMAIL_USER=
+EMAIL_PASS=
+EMAIL_FROM=
 ```
 
-**Para usar Supabase como storage**, adicione também:
-
-```env
-STORAGE_PROVIDER=supabase
-SUPABASE_URL=https://<projeto>.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=<sua-chave-service-role>
-SUPABASE_STORAGE_BUCKET=obras-arquivos
-```
-
-### 3. Criar/atualizar o banco de dados
+## Migrations e seeds
 
 ```bash
 npm run migrate
-```
-
-Isso aplica todas as migrations em ordem cronológica e cria o arquivo SQLite em `data/`.
-
-### 4. Popular com dados de exemplo (opcional)
-
-```bash
 npm run seed:sqlite
 ```
 
-Cria usuários de teste, obras e dados iniciais para validação local.
-
-Para ambiente Supabase (PostgreSQL + Storage), use:
+Outros seeds:
 
 ```bash
+npm run seed
+npm run seed:postgres
 npm run seed:supabase
 ```
 
-Esse seed completo inclui upload de fotos reais (`foto-obra*.jpg`) para o bucket configurado,
-criando registros em `arquivos` e vinculando os IDs nas medições e diários.
+Credenciais padrão de seed:
 
-**Credenciais criadas pelo seed:**
+| Perfil | Email | Senha |
+|---|---|---|
+| Admin | `admin@construcao.com` | `admin123` |
+| Supervisor | `supervisor@construcao.com` | `super123` |
+| Encarregado | `encarregado@construcao.com` | `encar123` |
 
-| Usuário | Email | Senha | Perfil |
-|---------|-------|-------|--------|
-| Administrador | `admin@construcao.com` | `admin123` | `admin` |
-| Supervisor | `supervisor@construcao.com` | `super123` | `supervisor` |
-| Encarregado | `encarregado@construcao.com` | `encar123` | `encarregado` |
-
-### 5. Iniciar o servidor
+## Subida da API
 
 ```bash
 npm run dev
 ```
 
-API disponível em: `http://localhost:5000/api`
+Servidor: `http://localhost:5000`
 
----
+API: `http://localhost:5000/api`
 
-## Frontend
+## Checklist de validação
 
-```bash
-cd ..\frontend
-npm install
-```
+1. `GET /health` retorna status ok.
+2. `GET /api/health` retorna status ok e timestamp.
+3. `POST /api/auth/login` retorna access e refresh token.
+4. Log indica conexão com Supabase sem erro.
 
-Crie o arquivo `.env` na raiz do frontend:
+Referências:
 
-```env
-REACT_APP_API_URL=http://localhost:5000/api
-```
-
-Inicie o servidor de desenvolvimento:
-
-```bash
-npm start
-```
-
-Frontend disponível em: `http://localhost:3000`
-
----
-
-## Verificação rápida
-
-### Health check da API
-
-```bash
-curl http://localhost:5000/api/health
-```
-
-Resposta esperada:
-```json
-{ "status": "ok" }
-```
-
-### Login
-
-```bash
-curl -X POST http://localhost:5000/api/auth/login ^
-  -H "Content-Type: application/json" ^
-  -d "{\"email\":\"admin@construcao.com\",\"senha\":\"admin123\"}"
-```
-
----
-
-## Testes automatizados
-
-```bash
-npm test -- --runInBand
-```
-
-Estado validado em 15/03/2026: **7 suítes**, **98 testes** passando (~25 s).
-
-> `--runInBand` é necessário para evitar conflitos de banco em testes de integração.
-
----
-
-## Dicas de produção
-
-- Defina `NODE_ENV=production` para desativar logs de debug e ativar compressão.
-- Use variáveis de ambiente reais — nunca commite o `.env`.
-- Configure um proxy reverso (Nginx / Caddy) na frente do Express para TLS.
-- Para PostgreSQL em produção, configure `DATABASE_CLIENT=pg` e `DATABASE_URL` no `.env`.
+- [COMMANDS.md](COMMANDS.md)
+- [README.md](README.md)
+- [REGRAS_NEGOCIO.md](REGRAS_NEGOCIO.md)

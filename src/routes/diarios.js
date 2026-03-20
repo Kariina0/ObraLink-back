@@ -7,10 +7,23 @@ const {
   createDiarioSchema,
   updateDiarioSchema,
 } = require("../validators/diarioValidator");
+const { ValidationError } = require("../utils/errors");
 const { PERFIS } = require("../constants");
 
 // Todas as rotas requerem autenticação
 router.use(authenticate);
+
+/**
+ * Middleware para validar :id como inteiro positivo.
+ */
+const validateIntId = (req, res, next) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) {
+    return next(new ValidationError("ID inválido"));
+  }
+  req.params.id = id;
+  next();
+};
 
 /**
  * @route GET /api/diarios
@@ -50,20 +63,20 @@ router.get("/minhas", diarioController.getMinhas);
  * @desc Obter diário por ID
  * @access Private
  */
-router.get("/:id", diarioController.getById);
+router.get("/:id", validateIntId, diarioController.getById);
 
 /**
  * @route PUT /api/diarios/:id
  * @desc Atualizar diário
  * @access Private
  */
-router.put("/:id", validate(updateDiarioSchema), diarioController.update);
+router.put("/:id", validateIntId, validate(updateDiarioSchema), diarioController.update);
 
 /**
  * @route DELETE /api/diarios/:id
  * @desc Remover diário (soft delete)
  * @access Private
  */
-router.delete("/:id", diarioController.delete);
+router.delete("/:id", validateIntId, diarioController.delete);
 
 module.exports = router;

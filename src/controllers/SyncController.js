@@ -53,9 +53,7 @@ class SyncController {
    * @access Private
    */
   retrySync = asyncHandler(async (req, res) => {
-    const result = await syncService.retrySync(() =>
-      syncService.pushBatch(req.body, req.user.id),
-    );
+    const result = await syncService.retryBatch(req.body, req.user.id);
 
     res.json(successResponse(result, "Tentativa de sincronização realizada"));
   });

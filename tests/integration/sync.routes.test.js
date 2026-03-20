@@ -35,6 +35,7 @@ jest.mock("../../src/config/supabaseClient", () => {
 });
 
 const app = require("../../src/app");
+const syncService = require("../../src/services/SyncService");
 
 beforeAll(async () => {
   await setupFullDb();
@@ -252,6 +253,35 @@ describe("POST /api/sync/push", () => {
     expect(Array.isArray(res.body.data.errors)).toBe(true);
     expect(Array.isArray(res.body.data.conflicts)).toBe(true);
   });
+
+  test("200 — não atualiza lastSync quando o lote tem erros", async () => {
+    const db = getFullDb();
+    const before = await db("users").where({ id: 2 }).first();
+
+    const res = await request(app)
+      .post("/api/sync/push")
+      .set("Authorization", `Bearer ${encarregadoToken}`)
+      .send({
+        medicoes: [
+          {
+            syncId: "med-invalid-obra-1",
+            clientTimestamp: new Date().toISOString(),
+            obra: 99999,
+            area: "Inexistente",
+            tipoServico: "alvenaria",
+            itens: [{ descricao: "Item", quantidade: 1, unidade: "un" }],
+            status: "enviada",
+          },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.errors.length).toBeGreaterThanOrEqual(1);
+
+    const after = await db("users").where({ id: 2 }).first();
+    expect(after.lastSync || null).toEqual(before.lastSync || null);
+  });
 });
 
 describe("POST /api/sync/conflicts", () => {
@@ -305,5 +335,46 @@ describe("POST /api/sync/retry", () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.success.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("200 — retry reprocessa item após falha transitória", async () => {
+    const originalSyncMedicao = syncService.syncMedicao.bind(syncService);
+    const targetSyncId = "med-retry-transient-1";
+
+    const spy = jest
+      .spyOn(syncService, "syncMedicao")
+      .mockImplementation(async (medicaoData, userId, userPerfil) => {
+        if (medicaoData.syncId === targetSyncId) {
+          spy.mockImplementation(originalSyncMedicao);
+          throw new Error("Falha transitória de conexão");
+        }
+
+        return originalSyncMedicao(medicaoData, userId, userPerfil);
+      });
+
+    const res = await request(app)
+      .post("/api/sync/retry")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        medicoes: [
+          {
+            syncId: targetSyncId,
+            clientTimestamp: new Date().toISOString(),
+            obra: 1,
+            area: "Área retry transitório",
+            tipoServico: "pintura",
+            itens: [{ descricao: "Massa", quantidade: 1, unidade: "un" }],
+            status: "enviada",
+          },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.attempts).toBeGreaterThanOrEqual(2);
+    expect(res.body.data.errors).toEqual([]);
+    expect(res.body.data.success.length).toBeGreaterThanOrEqual(1);
+
+    spy.mockRestore();
   });
 });

@@ -9,6 +9,21 @@ const logger = require("../utils/logger");
 const { validateBuffer, validateFile } = require("../utils/fileTypeValidator");
 
 class ArquivoService {
+  _resolveLocalSegmentFromPath(filePath, fallback = "outros") {
+    if (!filePath) return fallback;
+
+    const uploadRoot = path.resolve(process.env.UPLOAD_PATH || "./uploads");
+    const absolutePath = path.resolve(filePath);
+    const relativePath = path.relative(uploadRoot, absolutePath);
+
+    if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+      return fallback;
+    }
+
+    const [segment] = relativePath.split(path.sep);
+    return segment || fallback;
+  }
+
   _replaceExtension(filename, extension) {
     const parsed = path.parse(filename || "arquivo");
     return `${parsed.name}${extension}`;
@@ -231,11 +246,17 @@ class ArquivoService {
         }
 
         if (processedPath) {
+          const localSegment = this._resolveLocalSegmentFromPath(
+            processedPath,
+            tipoNormalizado,
+          );
+          const localFilename = path.basename(processedPath);
+
           const arquivoData = {
-            nome: path.basename(processedPath),
+            nome: localFilename,
             nomeOriginal: file.originalname,
             caminho: processedPath,
-            url: `/api/files/raw/${tipoNormalizado}/${path.basename(processedPath)}`,
+            url: `/api/files/raw/${localSegment}/${localFilename}`,
             tipo: tipoNormalizado,
             tipoArquivo: tipoArquivo || null,
             mimeType: storedMimeType,
@@ -265,11 +286,19 @@ class ArquivoService {
     }
 
     // Arquivo não-imagem ou compressão falhou
+    const localSegment = this._resolveLocalSegmentFromPath(
+      processedPath,
+      tipoNormalizado,
+    );
+    const localFilename = processedPath
+      ? path.basename(processedPath)
+      : file.filename || file.originalname;
+
     const arquivoData = {
-      nome: file.filename,
+      nome: localFilename,
       nomeOriginal: file.originalname,
       caminho: processedPath,
-      url: `/api/files/raw/${tipoNormalizado}/${file.filename}`,
+      url: `/api/files/raw/${localSegment}/${localFilename}`,
       tipo: tipoNormalizado,
       tipoArquivo: tipoArquivo || null,
       mimeType: storedMimeType,

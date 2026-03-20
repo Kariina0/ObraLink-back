@@ -1,61 +1,65 @@
 # Relatório de testes
 
-**Data de execução:** 15/03/2026  
-**Comando:** `npm test -- --runInBand`  
-**Ambiente:** backend local (SQLite em memória de teste)
+Visão consolidada dos testes do backend e próximos passos de cobertura.
 
----
+## Sumário
 
-## Resultado geral
+- [Objetivo](#objetivo)
+- [Situação atual](#situação-atual)
+- [Escopo existente](#escopo-existente)
+- [Lacunas prioritárias](#lacunas-prioritárias)
+- [Comandos recomendados](#comandos-recomendados)
 
-| Métrica | Valor |
-|---------|-------|
-| Test Suites | ✅ 7 passando / 7 total |
-| Tests | ✅ 98 passando / 98 total |
-| Snapshots | 0 |
-| Tempo total | ~25,9 s |
+## Objetivo
 
----
+Garantir confiabilidade de fluxos críticos e reduzir regressões em evolução contínua.
 
-## Suítes executadas
+## Situação atual
 
-| Arquivo | Tipo | Cobertura funcional |
-|---------|------|---------------------|
-| `tests/integration/auth.routes.test.js` | Integração | Login, refresh, logout, me, senha |
-| `tests/integration/files.routes.test.js` | Integração | Upload, acesso autenticado de arquivo |
-| `tests/integration/general.routes.test.js` | Integração | Health check, stats, rotas gerais |
-| `tests/integration/seed_sqlite.test.js` | Integração | Setup e seed do banco de teste |
-| `tests/integration/solicitacoes.routes.test.js` | Integração | Fluxo de solicitações e aprovação |
-| `tests/unit/ArquivoService.test.js` | Unitário | Lógica do serviço de arquivos |
-| `tests/unit/StorageService.test.js` | Unitário | Armazenamento local e Supabase |
+A base possui testes automatizados com Jest (integração e unitário), com cobertura já estabelecida em autenticação, arquivos e partes de solicitações/serviços.
 
----
+## Escopo existente
 
-## Observações da execução
+| Área | Cobertura |
+|---|---|
+| Auth | Presente |
+| Files | Presente |
+| Rotas gerais | Presente |
+| Solicitações | Presente |
+| Serviços de storage | Presente |
 
-1. Logs de erro em cenários negativos são esperados (credenciais inválidas, token expirado, etc.).
-2. Warnings do Knex sobre `createTableIfNotExists` — presente em migrations antigas, não impacta funcionalidade.
-3. Nenhuma suíte ou teste falhou na execução atual.
+## Lacunas prioritárias
 
----
+| Domínio | Ação recomendada |
+|---|---|
+| Obras | suíte de integração para CRUD e vínculos |
+| Diários | suíte por perfil e regras de data/duplicidade |
+| Medições | suíte de aprovação/rejeição e cenários de status |
+| Sync | suíte com conflitos e retry |
+| Management | suíte de filtros e exportações CSV |
 
-## Lacunas de cobertura identificadas
+## Comandos recomendados
 
-| Domínio | Situação |
-|---------|----------|
-| `obras` | Sem testes de integração (CRUD, vínculos) |
-| `diarios` | Sem testes de integração |
-| `medicoes` | Sem testes de integração (aprovação, edição) |
-| `management` | Sem testes de integração (exportações CSV) |
-| `sync` | Sem testes de cenários de conflito |
+Execução base:
 
----
+```bash
+npm test -- --runInBand
+```
 
-## Recomendações de evolução
+Com cobertura:
 
-1. Adicionar `tests/integration/obras.routes.test.js` cobrindo CRUD e vínculos.
-2. Adicionar `tests/integration/diarios.routes.test.js` cobrindo criação e acesso por perfil.
-3. Adicionar `tests/integration/medicoes.routes.test.js` cobrindo aprovação, rejeição e cálculo geométrico.
-4. Adicionar `tests/integration/sync.routes.test.js` com cenários de conflito `Last-Write-Wins`.
-5. Integrar execução de testes em pipeline CI com bloqueio de merge em falha.
-6. Configurar meta mínima de cobertura (`--coverage --coverageThreshold`).
+```bash
+npm test -- --coverage --runInBand
+```
+
+Suíte específica:
+
+```bash
+npm test -- tests/integration/auth.routes.test.js --runInBand
+```
+
+Referências:
+
+- [COMMANDS.md](COMMANDS.md)
+- [ROADMAP.md](ROADMAP.md)
+- [PLANO_EVOLUCAO_SISTEMA.md](PLANO_EVOLUCAO_SISTEMA.md)

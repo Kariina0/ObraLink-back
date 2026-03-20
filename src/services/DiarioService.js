@@ -20,6 +20,22 @@ const JSON_FIELDS = [
 ];
 
 class DiarioService {
+  _normalizeDateInput(value) {
+    if (value instanceof Date) {
+      return new Date(value.getTime());
+    }
+
+    if (typeof value === "string") {
+      const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (match) {
+        const [, year, month, day] = match;
+        return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0, 0));
+      }
+    }
+
+    return new Date(value);
+  }
+
   /** Serializa campos JSON para string antes de gravar no SQLite */
   _serialize(data) {
     const out = { ...data };
@@ -57,7 +73,7 @@ class DiarioService {
     }
 
     // Impede cadastro de diário com data futura
-    const dataRegistro = diarioData.data ? new Date(diarioData.data) : new Date();
+    const dataRegistro = diarioData.data ? this._normalizeDateInput(diarioData.data) : new Date();
     const hoje = new Date();
     hoje.setHours(23, 59, 59, 999);
     if (dataRegistro > hoje) {
@@ -92,8 +108,8 @@ class DiarioService {
    */
   async getByResponsavel(userId, { page = 1, limit = 10, obra, dataInicio, dataFim } = {}) {
     if (dataInicio || dataFim) {
-      const inicio = dataInicio ? new Date(dataInicio) : new Date("2000-01-01");
-      const fim    = dataFim   ? new Date(dataFim)    : new Date();
+      const inicio = dataInicio ? this._normalizeDateInput(dataInicio) : new Date("2000-01-01T12:00:00");
+      const fim    = dataFim   ? this._normalizeDateInput(dataFim)    : new Date();
       fim.setHours(23, 59, 59, 999);
 
       const obraId = obra ? Number(obra) : null;
@@ -111,8 +127,8 @@ class DiarioService {
    */
   async getAll({ page = 1, limit = 10, obra, dataInicio, dataFim } = {}) {
     if (dataInicio || dataFim) {
-      const inicio = dataInicio ? new Date(dataInicio) : new Date("2000-01-01");
-      const fim    = dataFim   ? new Date(dataFim)    : new Date();
+      const inicio = dataInicio ? this._normalizeDateInput(dataInicio) : new Date("2000-01-01T12:00:00");
+      const fim    = dataFim   ? this._normalizeDateInput(dataFim)    : new Date();
       fim.setHours(23, 59, 59, 999);
 
       const obraId = obra ? Number(obra) : null;
@@ -152,7 +168,7 @@ class DiarioService {
 
     // Se a data foi alterada, verificar duplicidade na nova data
     if (diarioData.data) {
-      const novaData = new Date(diarioData.data);
+      const novaData = this._normalizeDateInput(diarioData.data);
       const hoje = new Date();
       hoje.setHours(23, 59, 59, 999);
       if (novaData > hoje) {
@@ -160,8 +176,8 @@ class DiarioService {
       }
 
       // Verifica duplicidade apenas se a data mudou
-      const dataAtual = new Date(diario.data);
-      if (novaData.toDateString() !== dataAtual.toDateString()) {
+      const dataAtual = this._normalizeDateInput(diario.data);
+      if (novaData.toISOString().slice(0, 10) !== dataAtual.toISOString().slice(0, 10)) {
         const existente = await diarioRepository.findByData(diario.obra, novaData);
         if (existente && existente.id !== Number(diarioId)) {
           throw new ConflictError(
@@ -197,7 +213,10 @@ class DiarioService {
    * Usado pelo frontend antes de submeter o formulário.
    */
   async checkDuplicata(obraId, data) {
-    const existente = await diarioRepository.findByData(obraId, new Date(data));
+    const existente = await diarioRepository.findByData(
+      obraId,
+      this._normalizeDateInput(data),
+    );
     return { exists: !!existente, id: existente?.id ?? null };
   }
 }

@@ -1,60 +1,71 @@
-# Índice da documentação — ObraLink
+# Documentação técnica — ObraLink Backend
 
-> Documentação técnica do sistema de comunicação ágil entre escritório e canteiro da Construtora RPG.  
-> Última revisão: **17/03/2026**
+Documentação oficial do backend do ObraLink (Node.js + Express + Supabase/PostgreSQL).
 
----
+## Sumário
 
-## Leitura recomendada (ordem sugerida)
+- [Visão geral](#visão-geral)
+- [Trilha de leitura recomendada](#trilha-de-leitura-recomendada)
+- [Documentos por objetivo](#documentos-por-objetivo)
+- [Documentos sugeridos para próxima iteração](#documentos-sugeridos-para-próxima-iteração)
 
-| # | Documento | Conteúdo |
-|---|-----------|----------|
-| 1 | [README.md](README.md) | Visão geral funcional, stack, endpoints e arquitetura |
-| 2 | [STRUCTURE.md](STRUCTURE.md) | Estrutura de pastas detalhada e responsabilidade de cada camada |
-| 3 | [INSTALL.md](INSTALL.md) | Instalação e execução local (backend + frontend) |
-| 4 | [COMMANDS.md](COMMANDS.md) | Comandos operacionais, SQL útil e troubleshooting |
-| 5 | [REGRAS_NEGOCIO.md](REGRAS_NEGOCIO.md) | Todas as regras implementadas por domínio |
+## Visão geral
 
----
+Esta pasta centraliza:
 
-## Documentos por tema
+- arquitetura e organização do código;
+- regras de negócio implementadas;
+- setup local e comandos operacionais;
+- governança de contribuição e evolução do sistema;
+- relatórios técnicos e de testes.
 
-### Base técnica
+## Trilha de leitura recomendada
 
-- [README.md](README.md) — overview completo do projeto
-- [STRUCTURE.md](STRUCTURE.md) — mapa de arquivos e camadas
-- [INSTALL.md](INSTALL.md) — setup do ambiente
-- [COMMANDS.md](COMMANDS.md) — referência de comandos
-- [REGRAS_NEGOCIO.md](REGRAS_NEGOCIO.md) — contratos de domínio
+| Ordem | Documento | Objetivo |
+|---|---|---|
+| 1 | [README.md](README.md) | Entender escopo, arquitetura, módulos e endpoints principais |
+| 2 | [INSTALL.md](INSTALL.md) | Subir ambiente local de forma reprodutível |
+| 3 | [COMMANDS.md](COMMANDS.md) | Operar o projeto no dia a dia |
+| 4 | [STRUCTURE.md](STRUCTURE.md) | Navegar pelas camadas e responsabilidades do código |
+| 5 | [REGRAS_NEGOCIO.md](REGRAS_NEGOCIO.md) | Consultar regras funcionais por domínio |
+| 6 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribuir com padrão técnico do time |
+| 7 | [ROADMAP.md](ROADMAP.md) | Ver direção estratégica de evolução |
+| 8 | [PLANO_EVOLUCAO_SISTEMA.md](PLANO_EVOLUCAO_SISTEMA.md) | Ver plano tático de execução por fases |
+| 9 | [RELATORIO_ANALISE_27022026.md](RELATORIO_ANALISE_27022026.md) | Revisão técnica consolidada |
+| 10 | [RELATORIO_TESTES.md](RELATORIO_TESTES.md) | Estado atual de testes e lacunas |
 
-### Governança e evolução
+## Documentos por objetivo
 
-- [CONTRIBUTING.md](CONTRIBUTING.md) — fluxo de contribuição e padrões de código
-- [ROADMAP.md](ROADMAP.md) — próximas melhorias priorizadas
-- [PLANO_EVOLUCAO_SISTEMA.md](PLANO_EVOLUCAO_SISTEMA.md) — plano faseado de evolução
+### Onboarding e operação
 
-### Auditoria e qualidade
+- [README.md](README.md)
+- [INSTALL.md](INSTALL.md)
+- [COMMANDS.md](COMMANDS.md)
 
-- [RELATORIO_ANALISE_27022026.md](RELATORIO_ANALISE_27022026.md) — análise técnica consolidada
-- [RELATORIO_TESTES.md](RELATORIO_TESTES.md) — resultado da suíte de testes
+### Arquitetura e implementação
 
-### Legal
+- [STRUCTURE.md](STRUCTURE.md)
+- [REGRAS_NEGOCIO.md](REGRAS_NEGOCIO.md)
 
-- [LICENSE.md](LICENSE.md) — licença MIT
+### Governança e colaboração
 
----
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [LICENSE.md](LICENSE.md)
 
-## Escopo desta documentação
+### Evolução e qualidade
 
-| Aspecto | Detalhe |
-|---------|--------|
-| Banco de dados | SQLite + Knex migrations (PostgreSQL via `pg` em produção) |
-| API | Express + JWT + Joi + RBAC |
-| Upload | Local ou Supabase (configurável via `STORAGE_PROVIDER`) |
-| Sincronização | Fila offline no frontend (IndexedDB) + `/api/sync/*` no backend |
-| Frontend | React 19, pasta irmã `../frontend` |
+- [ROADMAP.md](ROADMAP.md)
+- [PLANO_EVOLUCAO_SISTEMA.md](PLANO_EVOLUCAO_SISTEMA.md)
+- [RELATORIO_ANALISE_27022026.md](RELATORIO_ANALISE_27022026.md)
+- [RELATORIO_TESTES.md](RELATORIO_TESTES.md)
 
----
+## Documentos sugeridos para próxima iteração
 
-> Esta documentação reflete **somente o que existe no código atual**.  
-> Referências obsoletas (MongoDB, rotas antigas) foram removidas nas revisões anteriores.
+Para elevar o nível de maturidade da documentação, recomenda-se criar:
+
+1. `API_CONTRACT.md` — contrato de API por endpoint (request/response, códigos e exemplos).
+2. `SECURITY.md` — decisões de segurança, hardening e checklist de produção.
+3. `RUNBOOK.md` — procedimentos operacionais (incidente, recuperação e manutenção).
+4. `CHANGELOG.md` — histórico de mudanças por release.
+
+> Enquanto esses documentos não existem, as referências oficiais permanecem nesta pasta.

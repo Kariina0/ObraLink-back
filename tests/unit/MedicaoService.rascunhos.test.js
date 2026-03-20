@@ -242,7 +242,12 @@ describe("MedicaoService - Rascunhos", () => {
 
       const result = await medicaoService.update(
         mockRascunho.id,
-        { status: "enviada" },
+        {
+          status: "enviada",
+          area: "Sala 01",
+          tipoServico: "pintura",
+          itens: [{ descricao: "Item envio", quantidade: 1, unidade: "m²" }],
+        },
         userId,
         PERFIS.ENCARREGADO
       );

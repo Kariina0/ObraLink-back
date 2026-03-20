@@ -1,114 +1,59 @@
-# Roadmap técnico
+# Roadmap técnico (backend)
 
-> Baseado no estado da branch `feature/implementacao-melhorias` em 17/03/2026.
+Direcionamento estratégico de evolução do backend com foco em segurança, previsibilidade e manutenção.
 
----
+## Sumário
 
-## Concluído
+- [Contexto atual](#contexto-atual)
+- [Prioridade alta](#prioridade-alta)
+- [Prioridade média](#prioridade-média)
+- [Prioridade evolutiva](#prioridade-evolutiva)
 
-| Item | Detalhes |
-|------|----------|
-| Autenticação JWT | Access token (15 min) + refresh token (7 dias) com rotação |
-| RBAC | Perfis `admin`, `supervisor`, `encarregado` por rota |
-| CRUD de obras | Com vínculo N:N obra ↔ encarregado |
-| Medições | Criação, edição, aprovação/rejeição e cálculo geométrico |
-| Diário de obra | Registro estruturado com validação de campos |
-| Solicitações de compra | Fluxo completo com valor calculado e aprovação |
-| Upload de arquivos | Compressão, validação por magic bytes, storage local/Supabase |
-| Sincronização | Endpoints `/api/sync/*` e fila offline no frontend (IndexedDB) |
-| Painel gerencial | Dashboard consolidado + exportações CSV |
-| Recuperação de senha | Por código numérico de 6 dígitos com TTL |
-| Testes automatizados | 7 suítes, 98 testes (integração + unitários) |
+## Contexto atual
 
----
+Estado já consolidado:
+
+- módulos core implementados (auth, obras, medições, diário, solicitações, arquivos, sync, management);
+- controle de acesso por perfil;
+- sincronização para operação offline;
+- exportações CSV operacionais;
+- base de testes automatizados existente.
 
 ## Prioridade alta
 
-### 1) Segurança de sessão — migrar para cookies `httpOnly`
+1. **Segurança de sessão**
+   - evoluir estratégia para reduzir exposição de tokens no cliente.
 
-**Problema:** tokens JWT armazenados em `localStorage` são acessíveis via JavaScript, vulneráveis a ataques XSS.
+2. **Padronização completa de soft delete**
+   - reduzir fallbacks e padronizar filtros por `deletedAt`.
 
-**Ação:**
-- Configurar o backend para emitir cookies `httpOnly; Secure; SameSite=Strict`
-- Remover leitura de token do `localStorage` no frontend (`AuthContext.js`)
-- Atualizar o interceptor do Axios para não enviar `Authorization` header manualmente
-
----
-
-### 2) Padronizar soft delete
-
-**Problema:** exclusão lógica usa `deletedAt` como coluna em algumas entidades e como campo dentro de `metadata` JSON em outras, tornando as queries inconsistentes.
-
-**Ação:**
-- Auditar todas as entidades e unificar como coluna `deletedAt` em todas
-- Adicionar migration de normalização para `medicoes`
-- Rever queries nos repositories que filtram por `metadata`
-
----
-
-### 3) Ampliar cobertura de testes
-
-**Problema:** testes concentrados em `auth`, `files`, `solicitacoes` e serviços de storage. Fluxos de `obras`, `diarios` e `sync` sem cobertura automatizada.
-
-**Ação:**
-- Adicionar `tests/integration/obras.routes.test.js`
-- Adicionar `tests/integration/diarios.routes.test.js`
-- Adicionar `tests/integration/sync.routes.test.js` com cenários de conflito
-- Meta: cobertura de integração em todos os domínios de negócio
-
----
+3. **Cobertura de testes por domínio**
+   - completar integração para domínios com lacunas.
 
 ## Prioridade média
 
-### 4) Exportação PDF de boletim
+1. **Exportação PDF de boletim**
+   - implementar endpoint atualmente retornando `501`.
 
-**Problema:** `/api/management/exports/boletim.pdf` retorna `501 Not Implemented`.
+2. **Contrato OpenAPI**
+   - publicar especificação formal para onboarding e integração.
 
-**Ação:**
-- Implementar com `pdfkit` ou `puppeteer`
-- Incluir medições aprovadas, fotos vinculadas e assinatura de responsável
-
----
-
-### 5) Especificação OpenAPI
-
-**Problema:** sem contrato formal da API, o frontend e terceiros dependem de reverse engineering ou documentação manual.
-
-**Ação:**
-- Adicionar `swagger-jsdoc` + `swagger-ui-express`
-- Documentar todos os endpoints com exemplos reais de payload
-
----
-
-### 6) Observabilidade de sincronização
-
-**Problema:** não há métricas de sucesso/conflito/erro por tipo de entidade ou por obra.
-
-**Ação:**
-- Adicionar tabela ou log estruturado de eventos de sync
-- Expor endpoint `/api/sync/stats` para o dashboard de integridade
-
----
+3. **Observabilidade de sync**
+   - métricas por obra/domínio para conflitos, erros e sucesso.
 
 ## Prioridade evolutiva
 
-### 7) UX offline aprimorado
+1. **CI obrigatório em PR**
+   - lint + testes com bloqueio de merge em falha.
 
-- Tela de reprocessamento manual por item na fila (`Sincronizacao.jsx`)
-- Indicador visual de estado por item: pendente / enviado / conflito / erro
+2. **Runbook e segurança operacional**
+   - documentação de incidentes, recuperação e hardening.
 
-### 8) Governança LGPD
+3. **Governança de dados**
+   - retenção e anonimização com trilha auditável.
 
-- Política formal de retenção e anonimização de dados sensíveis
-- Endpoint de exportação de dados do usuário (portabilidade)
-- Endpoint de exclusão de conta com anonimização
+Referências:
 
-### 9) Pipeline CI
-
-- GitHub Actions com: lint → testes → bloqueio de merge em falha
-- Badge de status no README
-
-### 10) PostgreSQL em produção
-
-- Migrar do SQLite para PostgreSQL no ambiente de produção
-- `knexfile.js` já suporta o driver `pg`; basta configurar `DATABASE_URL`
+- [PLANO_EVOLUCAO_SISTEMA.md](PLANO_EVOLUCAO_SISTEMA.md)
+- [RELATORIO_ANALISE_27022026.md](RELATORIO_ANALISE_27022026.md)
+- [RELATORIO_TESTES.md](RELATORIO_TESTES.md)

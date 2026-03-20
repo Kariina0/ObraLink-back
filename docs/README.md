@@ -1,207 +1,115 @@
-# ObraLink — Sistema de Comunicação Ágil para Obras
+# ObraLink Backend
 
-> Solução de gestão operacional entre canteiro e escritório técnico da Construtora RPG.
+Backend Node.js/Express do ObraLink, responsável por autenticação, obras, medições, diários, solicitações de compra, arquivos e sincronização offline.
 
----
+## Sumário
 
-## Visão geral
+- [Escopo](#escopo)
+- [Stack](#stack)
+- [Arquitetura](#arquitetura)
+- [Módulos e responsabilidades](#módulos-e-responsabilidades)
+- [Endpoints principais](#endpoints-principais)
+- [Perfis e acesso](#perfis-e-acesso)
+- [Decisões técnicas relevantes](#decisões-técnicas-relevantes)
+- [Limitações atuais](#limitações-atuais)
+- [Leituras complementares](#leituras-complementares)
 
-O **ObraLink** foi desenvolvido para eliminar gargalos de comunicação entre o **canteiro de obras** e o **escritório técnico**, centralizando e padronizando o registro e aprovação de:
+## Escopo
 
-| Módulo | Descrição |
-|--------|-----------|
-| Medições | Registro estruturado com cálculo geométrico e fluxo de aprovação |
-| Diário de obra | Registro diário de atividades, clima, equipe e ocorrências |
-| Solicitações de compra | Criação, priorização e aprovação com valor calculado |
-| Fotos e arquivos | Upload com compressão, classificação e acesso autenticado |
-| Sincronização | Operação offline com fila local e reconciliação automática |
-| Gestão | Visão consolidada e exportação de dados para o escritório |
+Este backend atende o fluxo operacional de obra com:
 
----
+- autenticação JWT com refresh token;
+- controle de acesso por perfil (`admin`, `supervisor`, `encarregado`);
+- gestão de obras e vínculo com encarregados;
+- registro e aprovação de medições;
+- diário de obra estruturado;
+- solicitações de compra com cálculo de valor total;
+- upload de arquivos local ou Supabase Storage;
+- sincronização para cenários offline.
 
-## Stack tecnológica
+## Stack
 
-### Backend
-
-| Tecnologia | Uso |
-|------------|-----|
-| Node.js `>=18` | Runtime |
-| Express | Servidor HTTP |
-| Knex + SQLite | ORM/query builder e banco de dados local |
-| JWT (access + refresh) | Autenticação stateless |
-| Joi | Validação de payloads |
-| Multer + Sharp | Upload e compressão de imagens |
-| Winston | Logging estruturado |
-| Helmet + express-rate-limit | Segurança HTTP |
-| Supabase (opcional) | Storage em nuvem alternativo |
-
-### Frontend
-
-| Tecnologia | Uso |
-|------------|-----|
-| React 19 | UI |
-| React Router v6 | Navegação e rotas protegidas |
-| Axios | Cliente HTTP com interceptor de refresh token |
-| idb (IndexedDB) | Persistência offline |
-| Context API | Gerenciamento de sessão (`AuthContext`) |
-
----
+| Camada | Tecnologias |
+|---|---|
+| Runtime/API | Node.js >= 18, Express |
+| Segurança | JWT, bcrypt, helmet, express-rate-limit, CORS controlado |
+| Validação | Joi |
+| Dados | Supabase/PostgreSQL (runtime), Knex (migrations e scripts) |
+| Arquivos | Multer, Sharp, Supabase Storage/local disk |
+| Logs | Winston |
+| Testes | Jest, Supertest |
 
 ## Arquitetura
 
-```
-┌─────────────────────────────────────────────────────┐
-│                   Frontend (React)                  │
-│  páginas → serviços → AuthContext → PrivateRoute    │
-│  fila offline (IndexedDB) → SyncManager             │
-└────────────────────┬────────────────────────────────┘
-                     │ HTTP /api/*
-┌────────────────────▼────────────────────────────────┐
-│                   Backend (Express)                 │
-│  CORS · Helmet · Rate Limit                         │
-│  → Router → authenticate/authorize                  │
-│  → validate (Joi)                                   │
-│  → Controller → Service → Repository               │
-│  → SQLite (Knex)                                    │
-└─────────────────────────────────────────────────────┘
-```
+Padrão principal aplicado:
 
----
+`Route -> Middleware -> Controller -> Service -> Repository -> DTO/Response`
 
-## Perfis de acesso (RBAC)
+- `routes`: definição de contratos HTTP e proteção por acesso.
+- `middleware`: autenticação, autorização, validação e tratamento de erro.
+- `controllers`: adaptação HTTP (`req/res`).
+- `services`: regras de negócio.
+- `repositories`: acesso a dados.
+- `dtos`: formatação da resposta para cliente.
 
-| Perfil | Permissões principais |
-|--------|----------------------|
-| `admin` | Acesso total: cadastros, aprovações, gestão, exportações |
-| `supervisor` | Aprovar/rejeitar medições e solicitações; visualizar todas as obras |
-| `encarregado` | Criar e editar dados das obras vinculadas; sem aprovação |
+## Módulos e responsabilidades
 
----
+| Módulo | Funções centrais |
+|---|---|
+| Auth | login, refresh, logout, me, cadastro (admin), recuperação/troca de senha |
+| Obras | CRUD, status da obra, vínculo com encarregados |
+| Medições | criação, edição, listagem, rascunho, aprovação/rejeição |
+| Diários | criação, listagem, consulta por duplicidade, edição/exclusão |
+| Solicitações | criação/listagem/consulta e aprovação/rejeição |
+| Arquivos | upload único/múltiplo, consulta e remoção, rota raw local |
+| Sync | pendências, push em lote, conflitos, retry |
+| Management | overview e exportações CSV |
 
-## Funcionalidades implementadas
+## Endpoints principais
 
-### Autenticação e sessão
-- Login com email/senha → JWT access token (15 min) + refresh token (7 dias)
-- Rotação de refresh token a cada renovação
-- Recuperação de senha por código numérico de 6 dígitos com TTL configurável
-- Troca de senha autenticada
-- Rate limit dedicado para rotas de autenticação
+Base local: `http://localhost:5000/api`
 
-### Obras
-- CRUD completo (somente `admin`)
-- Código único por obra, gerado automaticamente se omitido
-- Vínculo N:N obra ↔ encarregado (`obra_encarregados`)
+| Grupo | Rotas |
+|---|---|
+| Health | `GET /api/health`, `GET /api/stats` |
+| Auth | `/auth/*` |
+| Obras | `/obras/*` |
+| Medições | `/measurements/*` |
+| Diários | `/diarios/*` |
+| Solicitações | `/solicitacoes/*` |
+| Arquivos | `/files/*` |
+| Sync | `/sync/*` |
+| Gestão | `/management/*` |
 
-### Medições
-- Campos obrigatórios: `obra`, `itens`
-- Cálculo automático de `areaCalculada` e `volume` quando dimensões são fornecidas
-- Fluxo de aprovação/rejeição com motivo registrado
-- `encarregado` edita apenas medições próprias; medição `aprovada` é bloqueada para edição por não-admin
+Catálogo completo de rotas: [COMMANDS.md](COMMANDS.md).
 
-### Diário de obra
-- Campos obrigatórios: `obra`, `atividades` (mínimo 1 item)
-- `clima` restrito a enum `ensolarado | nublado | chuvoso | ventania | instavel`
-- Arrays e objetos serializados em JSON no banco
+## Perfis e acesso
 
-### Solicitações de compra
-- `valorTotal` calculado no backend (`∑ quantidade × valorUnitário`)
-- Prioridades: `baixa | media | alta | urgente`
-- Status inicial `pendente`; aprovação/rejeição registra responsável e data
+| Perfil | Acesso típico |
+|---|---|
+| `admin` | Acesso total administrativo e aprovação |
+| `supervisor` | Visão gerencial e aprovações |
+| `encarregado` | Operação de campo e dados próprios/vinculados |
 
-### Arquivos
-- Upload único e múltiplo com validação por magic bytes
-- Compressão com Sharp (configurável)
-- Acesso autenticado via `/api/files/raw/:tipo/:filename`, protegido contra path traversal
-- Storage configurável: `local` ou `supabase`
+## Decisões técnicas relevantes
 
-### Sincronização offline
-- Fila local no frontend (IndexedDB) com retry e TTL
-- Endpoints: `/api/sync/pending`, `/push`, `/conflicts`, `/retry`
-- Estratégia de resolução: **Last-Write-Wins** por timestamp cliente vs. servidor
+- `server.js` valida variáveis obrigatórias antes de subir aplicação.
+- `health` usa consulta em Supabase para validar conectividade real.
+- Rate limit global ignora rotas `/api/auth/*` (que têm limites específicos) e chamadas autenticadas com Bearer token.
+- Rota `GET /api/files/raw/:tipo/:filename` usa `optionalAuth` e proteção dupla contra path traversal.
+- Exportações CSV aplicam escape anti-injection para compatibilidade com planilhas.
 
-### Gestão
-- Dashboard consolidado por obra
-- Exportações CSV de medições, diários e solicitações
-- Exportação PDF de boletim: **não implementada** (retorna `501`)
+## Limitações atuais
 
----
+- `GET /api/management/exports/boletim.pdf` retorna `501 Not Implemented`.
+- Há uso de fallback para colunas `deletedAt` em consultas legadas.
 
-## Banco de dados
+## Leituras complementares
 
-> Banco padrão: **SQLite** — arquivo em `data/`, gerenciado por migrations Knex.
-
-Tabelas ativas:
-
-| Tabela | Descrição |
-|--------|-----------|
-| `users` | Usuários do sistema |
-| `obras` | Cadastro de obras |
-| `obra_encarregados` | Relação N:N obra ↔ usuário |
-| `medicoes` | Boletins de medição |
-| `diarios` | Registros diários de obra |
-| `solicitacoes_compra` | Solicitações de material |
-| `arquivos` | Metadados de arquivos enviados |
-
-> Tabelas legadas `measurements` e `purchases` foram removidas pela migration de 10/03/2026.
-
----
-
-## API — Endpoints disponíveis
-
-**Base URL:** `http://localhost:5000/api`
-
-| Rota | Método(s) | Descrição |
-|------|-----------|-----------|
-| `/health` | GET | Verificação de saúde da API |
-| `/stats` | GET | Estatísticas básicas |
-| `/auth/login` | POST | Login com email/senha |
-| `/auth/refresh` | POST | Renovação de access token |
-| `/auth/logout` | POST | Invalidação de refresh token |
-| `/auth/me` | GET | Dados do usuário autenticado |
-| `/auth/register` | POST | Cadastro (somente `admin`) |
-| `/auth/forgot-password` | POST | Solicitar código de recuperação |
-| `/auth/reset-password` | POST | Redefinir senha por código |
-| `/auth/change-password` | POST | Troca de senha autenticada |
-| `/obras` | GET/POST/PUT/DELETE | CRUD de obras |
-| `/obras/:id/encarregados` | POST/DELETE | Vínculos de encarregados |
-| `/measurements` | GET/POST/PUT/DELETE | Medições |
-| `/measurements/:id/aprovar` | POST | Aprovação de medição |
-| `/measurements/:id/rejeitar` | POST | Rejeição de medição |
-| `/diarios` | GET/POST/PUT/DELETE | Diário de obra |
-| `/solicitacoes` | GET/POST | Solicitações de compra |
-| `/solicitacoes/:id/aprovar` | POST | Aprovação de solicitação |
-| `/solicitacoes/:id/rejeitar` | POST | Rejeição de solicitação |
-| `/files/upload` | POST | Upload único |
-| `/files/upload-multiple` | POST | Upload múltiplo |
-| `/files/raw/:tipo/:filename` | GET | Acesso autenticado a arquivo |
-| `/sync/pending` | GET | Itens pendentes de sync |
-| `/sync/push` | POST | Envio de lote offline |
-| `/sync/conflicts` | GET | Conflitos de sincronização |
-| `/sync/retry` | POST | Reprocessamento de itens com erro |
-| `/management/overview` | GET | Dashboard gerencial |
-| `/management/exports/medicoes.csv` | GET | Exportação CSV de medições |
-| `/management/exports/diarios.csv` | GET | Exportação CSV de diários |
-
----
-
-## Limitações conhecidas
-
-| Item | Situação |
-|------|----------|
-| Exportação PDF de boletim | Não implementada — endpoint retorna `501` |
-| Tokens de sessão no frontend | Armazenados em `localStorage` (risco XSS residual) |
-| Soft delete | Padrão híbrido: coluna `deletedAt` e/ou campo em `metadata` |
-
----
-
-## Documentação relacionada
-
-| Arquivo | Conteúdo |
-|---------|----------|
-| [STRUCTURE.md](STRUCTURE.md) | Estrutura de pastas e camadas do projeto |
-| [INSTALL.md](INSTALL.md) | Instalação e execução local |
-| [COMMANDS.md](COMMANDS.md) | Comandos operacionais e utilitários |
-| [REGRAS_NEGOCIO.md](REGRAS_NEGOCIO.md) | Regras de negócio detalhadas |
-| [ROADMAP.md](ROADMAP.md) | Próximos passos técnicos priorizados |
-| [RELATORIO_TESTES.md](RELATORIO_TESTES.md) | Estado dos testes automatizados |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Guia de contribuição e padrões |
+- [INDEX.md](INDEX.md)
+- [INSTALL.md](INSTALL.md)
+- [COMMANDS.md](COMMANDS.md)
+- [STRUCTURE.md](STRUCTURE.md)
+- [REGRAS_NEGOCIO.md](REGRAS_NEGOCIO.md)
+- [RELATORIO_TESTES.md](RELATORIO_TESTES.md)
+- [ROADMAP.md](ROADMAP.md)

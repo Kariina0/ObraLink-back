@@ -2,7 +2,7 @@ const medicaoRepository = require("../repositories/MedicaoRepository");
 const diarioRepository = require("../repositories/DiarioRepository");
 const solicitacaoCompraRepository = require("../repositories/SolicitacaoCompraRepository");
 const arquivoRepository = require("../repositories/ArquivoRepository");
-const { retryWithBackoff } = require("../utils/helpers");
+const { sleep } = require("../utils/helpers");
 const logger = require("../utils/logger");
 const { ValidationError } = require("../utils/errors");
 
@@ -13,6 +13,46 @@ const _getArquivoService = () => require("./ArquivoService");
 const FINAL_STATUSES = ["aprovada", "rejeitada", "concluida"];
 
 class SyncService {
+  _extractRetryableBatch(previousBatch, errors) {
+    const errorSyncIdsByType = {
+      medicao: new Set(),
+      diario: new Set(),
+      solicitacao: new Set(),
+      arquivo: new Set(),
+    };
+
+    for (const item of errors || []) {
+      if (!item?.type || !item?.syncId) continue;
+      if (errorSyncIdsByType[item.type]) {
+        errorSyncIdsByType[item.type].add(item.syncId);
+      }
+    }
+
+    return {
+      medicoes: (previousBatch.medicoes || []).filter((item) =>
+        errorSyncIdsByType.medicao.has(item.syncId),
+      ),
+      diarios: (previousBatch.diarios || []).filter((item) =>
+        errorSyncIdsByType.diario.has(item.syncId),
+      ),
+      solicitacoes: (previousBatch.solicitacoes || []).filter((item) =>
+        errorSyncIdsByType.solicitacao.has(item.syncId),
+      ),
+      arquivos: (previousBatch.arquivos || []).filter((item) =>
+        errorSyncIdsByType.arquivo.has(item.syncId),
+      ),
+    };
+  }
+
+  _isBatchEmpty(batch = {}) {
+    return (
+      (batch.medicoes || []).length === 0
+      && (batch.diarios || []).length === 0
+      && (batch.solicitacoes || []).length === 0
+      && (batch.arquivos || []).length === 0
+    );
+  }
+
   _serializeFields(data, fields = []) {
     const payload = { ...data };
 
@@ -231,8 +271,14 @@ class SyncService {
       }
     }
 
-    // Atualizar lastSync do usuário
-    await userRepository.updateLastSync(userId);
+    // Atualizar lastSync apenas quando não houver erro no lote
+    if (results.errors.length === 0) {
+      await userRepository.updateLastSync(userId);
+    } else {
+      logger.warn(
+        `[SYNC] lastSync não atualizado para usuário ${userId} devido a ${results.errors.length} erro(s) no lote`,
+      );
+    }
 
     return results;
   }
@@ -507,11 +553,66 @@ class SyncService {
    * Retry de sincronização com backoff exponencial
    */
   async retrySync(syncFunction, maxAttempts = 3) {
-    return await retryWithBackoff(
-      syncFunction,
-      maxAttempts,
-      parseInt(process.env.SYNC_RETRY_DELAY) || 1000,
-    );
+    let lastError;
+    const baseDelay = parseInt(process.env.SYNC_RETRY_DELAY) || 1000;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await syncFunction();
+      } catch (error) {
+        lastError = error;
+
+        if (attempt < maxAttempts) {
+          const delay = baseDelay * Math.pow(2, attempt - 1);
+          await sleep(delay);
+        }
+      }
+    }
+
+    throw lastError;
+  }
+
+  /**
+   * Retry real de sincronização em lote: reenvia apenas os itens que falharam.
+   */
+  async retryBatch(batchData, userId, maxAttempts = 3) {
+    const delay = parseInt(process.env.SYNC_RETRY_DELAY) || 1000;
+    const aggregated = {
+      success: [],
+      conflicts: [],
+      errors: [],
+      attempts: 0,
+    };
+
+    let pendingBatch = {
+      medicoes: [...(batchData.medicoes || [])],
+      diarios: [...(batchData.diarios || [])],
+      solicitacoes: [...(batchData.solicitacoes || [])],
+      arquivos: [...(batchData.arquivos || [])],
+    };
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (this._isBatchEmpty(pendingBatch)) break;
+
+      const result = await this.pushBatch(pendingBatch, userId);
+      aggregated.attempts = attempt;
+      aggregated.success.push(...result.success);
+      aggregated.conflicts.push(...result.conflicts);
+
+      if (!result.errors.length) {
+        aggregated.errors = [];
+        return aggregated;
+      }
+
+      aggregated.errors = result.errors;
+      pendingBatch = this._extractRetryableBatch(pendingBatch, result.errors);
+
+      if (attempt < maxAttempts && !this._isBatchEmpty(pendingBatch)) {
+        await sleep(delay * Math.pow(2, attempt - 1));
+      }
+    }
+
+    return aggregated;
   }
 }
 

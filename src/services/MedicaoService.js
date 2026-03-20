@@ -11,6 +11,51 @@ const { generateSyncId } = require("../utils/helpers");
 const { PERFIS } = require("../constants");
 
 class MedicaoService {
+  _isBlank(value) {
+    return value == null || String(value).trim() === "";
+  }
+
+  _normalizeItens(rawItens) {
+    if (typeof rawItens === "string") {
+      try {
+        return JSON.parse(rawItens);
+      } catch {
+        return [];
+      }
+    }
+    return rawItens;
+  }
+
+  _validateEnviadaPayload(baseMedicao, patchData) {
+    const area = patchData.area !== undefined ? patchData.area : baseMedicao.area;
+    const tipoServico =
+      patchData.tipoServico !== undefined
+        ? patchData.tipoServico
+        : baseMedicao.tipoServico;
+    const itens =
+      patchData.itens !== undefined ? patchData.itens : baseMedicao.itens;
+
+    const itensNormalizados = this._normalizeItens(itens);
+
+    if (this._isBlank(area)) {
+      throw new ValidationError(
+        "Para enviar a medição, o campo 'area' é obrigatório",
+      );
+    }
+
+    if (this._isBlank(tipoServico)) {
+      throw new ValidationError(
+        "Para enviar a medição, o campo 'tipoServico' é obrigatório",
+      );
+    }
+
+    if (!Array.isArray(itensNormalizados) || itensNormalizados.length === 0) {
+      throw new ValidationError(
+        "Para enviar a medição, é necessário informar pelo menos um item",
+      );
+    }
+  }
+
   _extractAnexoIds(anexos) {
     let parsed = anexos;
     if (typeof parsed === "string") {
@@ -176,6 +221,13 @@ class MedicaoService {
   async update(medicaoId, medicaoData, userId, userPerfil) {
     const medicao = await medicaoRepository.findById(medicaoId);
 
+    // Aprovação/rejeição devem ocorrer somente pelos endpoints dedicados
+    if (["aprovada", "rejeitada"].includes(medicaoData.status)) {
+      throw new ValidationError(
+        "Use os endpoints de aprovação/rejeição para alterar este status",
+      );
+    }
+
     // Rascunho: apenas o criador pode editar, independente do perfil
     if (
       medicao.status === "rascunho" &&
@@ -199,6 +251,11 @@ class MedicaoService {
     // Não permitir edição de medições aprovadas
     if (medicao.status === "aprovada" && userPerfil !== PERFIS.ADMIN) {
       throw new ValidationError("Não é possível editar medições aprovadas");
+    }
+
+    // Transição para enviada exige dados mínimos completos
+    if (medicaoData.status === "enviada") {
+      this._validateEnviadaPayload(medicao, medicaoData);
     }
 
     // Recalcular areaCalculada e volume se dimensões foram atualizadas

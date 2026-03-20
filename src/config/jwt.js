@@ -20,24 +20,30 @@ class JWTConfig {
 
   generateAccessToken(payload) {
     return jwt.sign(payload, this.secret, {
+      algorithm: "HS256",
       expiresIn: this.expiresIn,
     });
   }
 
   generateRefreshToken(payload) {
     return jwt.sign(payload, this.refreshSecret, {
+      algorithm: "HS256",
       expiresIn: this.refreshExpiresIn,
     });
   }
 
   verifyAccessToken(token) {
     // Preserve original jsonwebtoken errors (name/message) so errorHandler can handle them
-    return jwt.verify(token, this.secret);
+    return jwt.verify(token, this.secret, {
+      algorithms: ["HS256"],
+    });
   }
 
   verifyRefreshToken(token) {
     // Preserve original jsonwebtoken errors (name/message) so errorHandler can handle them
-    return jwt.verify(token, this.refreshSecret);
+    return jwt.verify(token, this.refreshSecret, {
+      algorithms: ["HS256"],
+    });
   }
 
   generateTokenPair(payload) {

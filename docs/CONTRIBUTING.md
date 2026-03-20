@@ -1,104 +1,67 @@
 # Guia de contribuição
 
-> Padroniza contribuições para manter coerência entre implementação, testes e documentação.
+Padrão de contribuição para manter consistência entre código, testes e documentação.
 
----
+## Sumário
 
-## Fluxo de trabalho
+- [Fluxo recomendado](#fluxo-recomendado)
+- [Padrões técnicos do backend](#padrões-técnicos-do-backend)
+- [Checklist obrigatório de PR](#checklist-obrigatório-de-pr)
+- [Padrão de commits](#padrão-de-commits)
+- [Quando atualizar docs](#quando-atualizar-docs)
 
-1. Atualize sua branch a partir da branch principal (`main`).
-2. Crie uma branch descritiva:
+## Fluxo recomendado
 
-```bash
-git checkout -b feature/nome-curto
-git checkout -b fix/nome-curto
-git checkout -b docs/nome-curto
-```
+1. Atualize branch local com base na principal de trabalho.
+2. Crie branch temática (`feature/*`, `fix/*`, `docs/*`, `refactor/*`).
+3. Faça alterações pequenas e focadas.
+4. Execute lint e testes antes de abrir PR.
+5. Atualize docs impactados na mesma entrega.
 
-3. Desenvolva alterações pequenas e focadas em um único objetivo.
-4. Execute as validações locais antes de commitar.
-5. Atualize `docs/` se o comportamento funcional foi alterado.
-6. Abra PR com contexto técnico claro e evidências de teste.
+## Padrões técnicos do backend
 
----
+- Preserve arquitetura em camadas descrita em [STRUCTURE.md](STRUCTURE.md).
+- Toda entrada HTTP deve passar por schema Joi.
+- Regra de negócio deve ficar em `services`.
+- Repositórios não devem conter lógica de autorização.
+- Rotas sensíveis devem usar `authenticate` e `authorize`.
+- Evite alterações fora do escopo da tarefa.
 
-## Convenções técnicas
+## Checklist obrigatório de PR
 
-| Aspecto | Regra |
-|---------|-------|
-| Linguagem | JavaScript (Node.js `>=18`) |
-| Validação de entrada | Joi — schemas em `src/validators/` |
-| Regras de negócio | Camada `src/services/` |
-| Acesso a dados | Camada `src/repositories/` (somente Knex, sem lógica de domínio) |
-| Erros de domínio | `src/utils/errors.js` (AppError, NotFoundError, etc.) |
-| Respostas HTTP | Helpers de `src/utils/helpers.js` (success/error padronizados) |
-| Rotas novas | Sempre proteger com `authenticate` e `authorize` quando necessário |
-| Novos campos obrigatórios | Adicionar migration + atualizar validator + atualizar DTO |
+- [ ] `npm run lint` sem erros.
+- [ ] `npm test -- --runInBand` passando.
+- [ ] Mudanças de schema com migration.
+- [ ] Novas regras descritas em [REGRAS_NEGOCIO.md](REGRAS_NEGOCIO.md).
+- [ ] Novos comandos/variáveis refletidos em [COMMANDS.md](COMMANDS.md) e [INSTALL.md](INSTALL.md).
+- [ ] Endpoints documentados quando houver alteração de contrato.
 
----
+## Padrão de commits
 
-## Checklist antes do PR
+Formato recomendado:
 
-- [ ] Testes passando: `npm test -- --runInBand`
-- [ ] Lint sem erros: `npm run lint`
-- [ ] Rotas novas protegidas com `authenticate` / `authorize`
-- [ ] Payloads validados por schema Joi
-- [ ] Migration criada para mudanças no schema
-- [ ] DTO atualizado para não expor campos sensíveis
-- [ ] `docs/` atualizado se o comportamento mudou
-- [ ] Nenhuma funcionalidade fora do escopo da tarefa
+`tipo(escopo): descrição curta`
 
----
+Tipos comuns: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
 
-## Padrão de commit (Conventional Commits)
+Exemplos:
 
-```
-<tipo>(<escopo>): <mensagem curta em português>
-```
+- `feat(sync): adicionar validação de payload em retry`
+- `fix(files): reforçar proteção de path traversal`
+- `docs(commands): incluir endpoints de gestão`
 
-| Tipo | Quando usar |
-|------|-------------|
-| `feat` | Nova funcionalidade |
-| `fix` | Correção de bug |
-| `docs` | Alteração somente em documentação |
-| `refactor` | Refatoração sem mudança de comportamento |
-| `test` | Adiciona ou corrige testes |
-| `chore` | Configuração, build, dependências |
+## Quando atualizar docs
 
-**Exemplos:**
+Atualize documentação sempre que houver mudança em:
 
-```bash
-git commit -m "feat(medicoes): adiciona calculo de volume nas dimensoes"
-git commit -m "fix(auth): corrige validacao de refresh token expirado"
-git commit -m "docs: atualiza regras de negocio para fluxo de rejeicao"
-git commit -m "test(solicitacoes): adiciona testes de aprovacao por supervisor"
-```
+- endpoint, payload, validação ou regra de acesso;
+- variáveis de ambiente;
+- scripts npm;
+- comportamento operacional relevante.
 
----
+Referências:
 
-## Alterações no frontend (pasta irmã)
-
-- Garanta compatibilidade total com os endpoints existentes em `src/routes/`.
-- Não crie contratos de API sem implementação correspondente no backend.
-- Documente integrações novas em `docs/README.md` e `docs/REGRAS_NEGOCIO.md`.
-- Atualize `docs/STRUCTURE.md` se novos serviços, hooks ou componentes foram adicionados.
-
----
-
-## Adicionando uma nova entidade (passo a passo)
-
-1. Criar migration em `migrations/` com o schema da tabela.
-2. Criar `Repository` em `src/repositories/` estendendo `BaseRepository`.
-3. Criar `Service` em `src/services/` com regras de negócio e autorização.
-4. Criar `Controller` em `src/controllers/` (lê req, chama service, retorna DTO).
-5. Criar `DTO` em `src/dtos/` para moldar a resposta sem campos sensíveis.
-6. Criar `Validator` em `src/validators/` com schema Joi.
-7. Criar `Route` em `src/routes/` e registrar em `src/routes/index.js`.
-8. Adicionar testes de integração em `tests/integration/`.
-9. Atualizar `docs/README.md`, `docs/STRUCTURE.md` e `docs/REGRAS_NEGOCIO.md`.
-
----
-
-## Licença
-
-Ao contribuir, você concorda com a licença MIT do projeto.
+- [README.md](README.md)
+- [INSTALL.md](INSTALL.md)
+- [COMMANDS.md](COMMANDS.md)
+- [REGRAS_NEGOCIO.md](REGRAS_NEGOCIO.md)

@@ -28,7 +28,10 @@ app.use(
       // Permite requisições sem origin (ex: mobile, Postman, server-to-server)
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      callback(new Error(`Origem não permitida pelo CORS: ${origin}`));
+      const err = new Error(`Origem não permitida pelo CORS: ${origin}`);
+      err.statusCode = 403;
+      err.isOperational = true;
+      callback(err);
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],

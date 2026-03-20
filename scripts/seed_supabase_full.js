@@ -7,7 +7,7 @@
  * Volume gerado:
  *   - 18 usuários  (3 admin · 5 supervisor · 10 encarregado)
  *   - 12 obras
- *   - 27 vínculos  obra ↔ encarregado
+ *   - 30 vínculos  obra ↔ encarregado
  *   - 36 arquivos (3 fotos reais por obra)
  *   - 80 medições  (rascunho · enviada · aprovada · rejeitada)
  *   - 50 diários de obra
@@ -293,6 +293,7 @@ async function seed() {
       adm1, adm2,
       sup1, sup2, sup3, sup4,
       enc1, enc2, enc3, enc4, enc5, enc6, enc7, enc8, enc9,
+      , , encSimple,
     ] = userIds;
 
     /* ── 3. Obras (12) ───────────────────────────────────── */
@@ -432,8 +433,8 @@ async function seed() {
       obraIds.push(id);
     }
 
-    /* ── 4. Vínculos obra ↔ encarregado (27) ─────────────── */
-    console.log("\n🔗  Criando vínculos obra-encarregado (27)...");
+    /* ── 4. Vínculos obra ↔ encarregado (30) ─────────────── */
+    console.log("\n🔗  Criando vínculos obra-encarregado (30)...");
 
     // [obraIndex, encUserId]
     const VINCULOS = [
@@ -449,6 +450,7 @@ async function seed() {
       [9, enc2], [9, enc3],
       [10, enc4], [10, enc5], [10, enc6],
       [11, enc7], [11, enc8], [11, enc9],
+      [0, encSimple], [4, encSimple], [8, encSimple],
     ];
 
     for (const [obraIdx, userId] of VINCULOS) {
@@ -468,6 +470,7 @@ async function seed() {
       [enc3]: obraIds[1], [enc4]: obraIds[1], [enc5]: obraIds[1],
       [enc6]: obraIds[2], [enc7]: obraIds[2],
       [enc8]: obraIds[3], [enc9]: obraIds[3],
+      [encSimple]: obraIds[0],
     };
     for (const [userId, obraId] of Object.entries(obraAtualMap)) {
       await knex("users").where({ id: Number(userId) }).update({ obraAtual: obraId });
@@ -485,6 +488,7 @@ async function seed() {
       [enc7]: [obraIds[2], obraIds[5], obraIds[11]],
       [enc8]: [obraIds[3], obraIds[7], obraIds[11]],
       [enc9]: [obraIds[3], obraIds[8], obraIds[11]],
+      [encSimple]: [obraIds[0], obraIds[4], obraIds[8]],
     };
 
     /* ── 5.1 Arquivos/Fotos reais (36) ─────────────────── */
